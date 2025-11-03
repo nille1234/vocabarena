@@ -17,7 +17,7 @@ import confetti from "canvas-confetti";
 export default function CrosswordPage() {
   const params = useParams();
   const router = useRouter();
-  const { vocabulary, loading, error } = useGameVocabulary();
+  const { vocabulary: vocabData, loading, error } = useGameVocabulary();
   const { session } = useGameStore();
 
   const [crossword, setCrossword] = useState<CrosswordGrid | null>(null);
@@ -39,14 +39,14 @@ export default function CrosswordPage() {
 
   // Initialize crossword on mount
   useEffect(() => {
-    if (!vocabulary?.length) {
+    if (!vocabData?.length) {
       return;
     }
 
     console.log('Generating crossword with language:', language);
-    const generated = generateCrossword(vocabulary, wordCount, language);
+    const generated = generateCrossword(vocabData, wordCount, language);
     setCrossword(generated);
-  }, [vocabulary, wordCount, language]);
+  }, [vocabData, wordCount, language]);
 
   // Handle cell input
   const handleCellInput = (row: number, col: number, value: string) => {
@@ -148,8 +148,8 @@ export default function CrosswordPage() {
   };
 
   const handleReset = () => {
-    if (!vocabulary) return;
-    const generated = generateCrossword(vocabulary, wordCount);
+    if (!vocabData) return;
+    const generated = generateCrossword(vocabData, wordCount);
     setCrossword(generated);
     setUserAnswers(new Map());
     setCompletedWords(new Set());
@@ -189,7 +189,7 @@ export default function CrosswordPage() {
     );
   }
 
-  if (!vocabulary || vocabulary.length === 0 || !crossword) {
+  if (!vocabData || vocabData.length === 0 || !crossword) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-500/10 via-purple-500/10 to-fuchsia-500/10">
         <Card className="border-none shadow-2xl bg-background/80 backdrop-blur-xl">
