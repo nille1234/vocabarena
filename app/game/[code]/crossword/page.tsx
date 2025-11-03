@@ -39,7 +39,7 @@ export default function CrosswordPage() {
 
   // Initialize crossword on mount
   useEffect(() => {
-    if (!vocabulary || vocabulary.length === 0) {
+    if (!vocabulary?.length) {
       return;
     }
 
