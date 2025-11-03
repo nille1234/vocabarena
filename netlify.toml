@@ -4,3 +4,11 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Deploy previews for dev branch
+[context.dev]
+  command = "npm run build"
+
+# Branch deploy configuration
+[context.branch-deploy]
+  command = "npm run build"

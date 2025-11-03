@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState } from 'react'
+import { getCurrentUserProfile } from '@/lib/supabase/userManagement'
 
 export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) {
   const [email, setEmail] = useState('')
@@ -36,6 +37,13 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
         password,
       })
       if (error) throw error
+      
+      // Check if password change is required
+      const profile = await getCurrentUserProfile()
+      if (profile?.passwordChangeRequired) {
+        router.push('/auth/update-password')
+        return
+      }
       
       // Redirect to the original destination or default to /teacher
       const redirectTo = searchParams.get('redirectTo') || '/teacher'
@@ -91,12 +99,6 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Logging in...' : 'Login'}
               </Button>
-            </div>
-            <div className="mt-4 text-center text-sm">
-              Don&apos;t have an account?{' '}
-              <Link href="/auth/sign-up" className="underline underline-offset-4">
-                Sign up
-              </Link>
             </div>
           </form>
         </CardContent>
