@@ -16,11 +16,18 @@ export async function createVocabularyList(
   }
 
   try {
-    // Check if a vocabulary list with the same name already exists
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
+    // Check if a vocabulary list with the same name already exists for this user
     const { data: existingList, error: checkError } = await supabase
       .from('vocabulary_lists')
       .select('id, name')
       .eq('name', name)
+      .eq('user_id', user.id)
       .maybeSingle();
 
     if (checkError) throw checkError;
@@ -40,6 +47,7 @@ export async function createVocabularyList(
         name,
         description,
         language,
+        user_id: user.id,
       })
       .select()
       .single();
@@ -249,6 +257,12 @@ export async function createGameLink(
   }
 
   try {
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
     const { data, error } = await supabase
       .from('game_links')
       .insert({
@@ -258,6 +272,7 @@ export async function createGameLink(
         enabled_games: enabledGames,
         crossword_word_count: crosswordWordCount,
         is_active: true,
+        user_id: user.id,
       })
       .select()
       .single();

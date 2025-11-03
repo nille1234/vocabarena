@@ -14,9 +14,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { updatePasswordChangeRequired } from '@/lib/supabase/userManagement'
+import { toast } from 'sonner'
 
 export function UpdatePasswordForm({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) {
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
@@ -28,10 +31,31 @@ export function UpdatePasswordForm({ className, ...props }: React.ComponentProps
     setError(null)
 
     try {
-      const { error } = await supabase.auth.updateUser({ password })
-      if (error) throw error
-      // Update this route to redirect to an authenticated route. The user already has an active session.
-      router.push('/protected')
+      if (password !== confirmPassword) {
+        throw new Error('Passwords do not match')
+      }
+
+      if (password.length < 6) {
+        throw new Error('Password must be at least 6 characters')
+      }
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not authenticated')
+
+      // Update password
+      const { error: updateError } = await supabase.auth.updateUser({ password })
+      if (updateError) throw updateError
+
+      // Clear password change required flag
+      const { error: profileError } = await updatePasswordChangeRequired(user.id, false)
+      if (profileError) {
+        console.error('Error updating profile:', profileError)
+      }
+
+      toast.success('Password updated successfully!')
+      router.push('/teacher')
+      router.refresh()
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : 'An error occurred')
     } finally {
@@ -56,8 +80,21 @@ export function UpdatePasswordForm({ className, ...props }: React.ComponentProps
                   type="password"
                   placeholder="New password"
                   required
+                  minLength={6}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="confirm-password">Confirm new password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  placeholder="Confirm new password"
+                  required
+                  minLength={6}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}

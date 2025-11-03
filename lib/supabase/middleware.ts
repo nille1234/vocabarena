@@ -45,20 +45,12 @@ export async function updateSession(request: NextRequest) {
   const isProtectedPath = protectedPaths.some(path => 
     request.nextUrl.pathname.startsWith(path)
   )
-  const isAuthPath = request.nextUrl.pathname.startsWith('/auth')
 
   // Redirect to login if accessing protected route without authentication
-  if (!user && isProtectedPath && !isAuthPath) {
+  if (!user && isProtectedPath) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
     url.searchParams.set('redirectTo', request.nextUrl.pathname)
-    return NextResponse.redirect(url)
-  }
-
-  // Redirect authenticated users away from auth pages (except logout)
-  if (user && isAuthPath && !request.nextUrl.pathname.includes('/auth/confirm')) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/teacher'
     return NextResponse.redirect(url)
   }
 
