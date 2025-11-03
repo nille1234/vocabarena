@@ -24,7 +24,7 @@ type Question = {
 export default function SurvivalPage() {
   const router = useRouter();
   const params = useParams();
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
 
   const [lives, setLives] = useState(3);
   const [score, setScore] = useState(0);
@@ -63,7 +63,7 @@ export default function SurvivalPage() {
 
   // Initialize first question
   useEffect(() => {
-    if (vocabulary && vocabulary.length > 0) {
+    if (vocabulary && Array.isArray(vocabulary) && vocabulary.length > 0) {
       generateNewQuestion();
     }
   }, [vocabulary]);
@@ -168,7 +168,7 @@ export default function SurvivalPage() {
 
   const accuracy = questionNumber > 1 ? correctAnswers / (questionNumber - 1) : 0;
 
-  if (!vocabulary || vocabulary.length === 0) {
+  if (!vocabulary || !Array.isArray(vocabulary) || vocabulary.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

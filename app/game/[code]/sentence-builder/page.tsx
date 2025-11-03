@@ -36,7 +36,7 @@ export default function SentenceBuilderPage() {
 
   const audioManager = getAudioManager();
   const TOTAL_ROUNDS = 10;
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
 
   // Generate new question
   const generateNewQuestion = useCallback(() => {
@@ -61,7 +61,7 @@ export default function SentenceBuilderPage() {
 
   // Initialize first question
   useEffect(() => {
-    if (vocabulary && vocabulary.length > 0) {
+    if (vocabulary && Array.isArray(vocabulary) && vocabulary.length > 0) {
       generateNewQuestion();
     }
   }, [vocabulary, generateNewQuestion]);

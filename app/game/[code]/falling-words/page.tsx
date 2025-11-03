@@ -27,7 +27,7 @@ export default function FallingWordsPage() {
   const router = useRouter();
   const params = useParams();
   const inputRef = useRef<HTMLInputElement>(null);
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
 
   const [fallingWords, setFallingWords] = useState<FallingWord[]>([]);
   const [userInput, setUserInput] = useState("");
@@ -46,7 +46,7 @@ export default function FallingWordsPage() {
 
   // Spawn a new falling word
   const spawnWord = useCallback(() => {
-    if (isGameOver || !vocabulary || vocabulary.length === 0) return;
+    if (isGameOver || !vocabulary || !Array.isArray(vocabulary) || vocabulary.length === 0) return;
 
     const randomCard = vocabulary[
       Math.floor(Math.random() * vocabulary.length)
@@ -114,10 +114,10 @@ export default function FallingWordsPage() {
 
   // Initial spawn
   useEffect(() => {
-    if (vocabulary && vocabulary.length > 0) {
+    if (vocabulary && Array.isArray(vocabulary) && vocabulary.length > 0) {
       spawnWord();
     }
-  }, [vocabulary]);
+  }, [vocabulary, spawnWord]);
 
   // Level up every 10 correct answers
   useEffect(() => {
@@ -179,7 +179,7 @@ export default function FallingWordsPage() {
   const accuracy = totalWords > 0 ? correctAnswers / totalWords : 0;
 
   // Redirect if no vocabulary available
-  if (!vocabulary || vocabulary.length === 0) {
+  if (!vocabulary || !Array.isArray(vocabulary) || vocabulary.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Card className="max-w-md">

@@ -48,7 +48,7 @@ export default function GravityPage() {
   const [vocabulary] = useState(() => vocabularyData ? shuffleArray(vocabularyData) : []);
 
   // Show loading state while redirecting
-  if (!vocabularyData || vocabulary.length === 0) {
+  if (!vocabularyData || !Array.isArray(vocabulary) || vocabulary.length === 0) {
     return null;
   }
   

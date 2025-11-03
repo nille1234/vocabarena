@@ -21,7 +21,7 @@ export default function HangmanPage() {
   const router = useRouter();
   const params = useParams();
 
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
   
   // Redirect to home if no vocabulary (game must be accessed via game link)
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function HangmanPage() {
 
   // Start new round
   const startNewRound = useCallback(() => {
-    if (!vocabulary || vocabulary.length === 0) return;
+    if (!vocabulary || !Array.isArray(vocabulary) || vocabulary.length === 0) return;
     
     const availableCards = vocabulary.filter(
       card => !usedCards.has(card.id)
@@ -141,7 +141,7 @@ export default function HangmanPage() {
 
   // Initialize first round
   useEffect(() => {
-    if (vocabulary && vocabulary.length > 0) {
+    if (vocabulary && Array.isArray(vocabulary) && vocabulary.length > 0) {
       startNewRound();
     }
   }, [vocabulary, startNewRound]);
