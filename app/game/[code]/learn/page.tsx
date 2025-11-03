@@ -16,7 +16,7 @@ export default function LearnPage() {
   const router = useRouter();
   const gameCode = params.code as string;
 
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
   
   // Redirect to home if no vocabulary (game must be accessed via game link)
   useEffect(() => {
@@ -32,7 +32,7 @@ export default function LearnPage() {
   const [showDefinition, setShowDefinition] = useState(false);
 
   // Show loading state while redirecting
-  if (!vocabulary || cards.length === 0) {
+  if (!vocabulary || !Array.isArray(vocabulary) || vocabulary.length === 0) {
     return null;
   }
 
