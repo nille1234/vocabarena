@@ -25,7 +25,7 @@ export default function MatchPage() {
   const router = useRouter();
   const gameCode = params.code as string;
 
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
   
   // Redirect to home if no vocabulary (game must be accessed via game link)
   useEffect(() => {
@@ -42,8 +42,10 @@ export default function MatchPage() {
   const [isComplete, setIsComplete] = useState(false);
 
   useEffect(() => {
+    if (!vocabulary || !Array.isArray(vocabulary)) return;
+    
     // Create match cards from vocabulary - use 15 random pairs
-    const gameCards = getRandomCards(vocabulary || [], 15);
+    const gameCards = getRandomCards(vocabulary, 15);
     const matchCards: MatchCard[] = [];
     
     gameCards.forEach(card => {
@@ -64,7 +66,7 @@ export default function MatchPage() {
     });
 
     setCards(shuffleArray(matchCards));
-  }, []);
+  }, [vocabulary]);
 
   useEffect(() => {
     if (!isComplete && cards.length > 0) {
