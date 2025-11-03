@@ -25,7 +25,7 @@ type Question = {
 export default function WordMazePage() {
   const router = useRouter();
   const params = useParams();
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
 
   const [mazeData] = useState(() => {
     const path = generateMazePath(10);
@@ -51,7 +51,7 @@ export default function WordMazePage() {
 
   // Generate new question
   const generateNewQuestion = useCallback(() => {
-    const availableCards = (vocabulary || []).filter(
+    const availableCards = ((vocabulary && Array.isArray(vocabulary) ? vocabulary : [])).filter(
       (card: VocabCard) => !usedCards.has(card.id)
     );
 

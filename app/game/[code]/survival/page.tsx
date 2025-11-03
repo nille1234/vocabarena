@@ -43,7 +43,7 @@ export default function SurvivalPage() {
 
   // Generate new question
   const generateNewQuestion = useCallback(() => {
-    const availableCards = (vocabulary || []).filter(
+    const availableCards = ((vocabulary && Array.isArray(vocabulary) ? vocabulary : [])).filter(
       (card: VocabCard) => !usedCards.has(card.id)
     );
 

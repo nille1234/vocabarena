@@ -20,7 +20,7 @@ export default function SpellPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   
   // Get vocabulary from game store (set by /play/[code])
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
 
   // Redirect to home if no vocabulary (game must be accessed via game link)
   useEffect(() => {

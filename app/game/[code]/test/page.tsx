@@ -27,7 +27,7 @@ export default function TestPage() {
   const router = useRouter();
   const gameCode = params.code as string;
 
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
   
   // Redirect to home if no vocabulary (game must be accessed via game link)
   useEffect(() => {

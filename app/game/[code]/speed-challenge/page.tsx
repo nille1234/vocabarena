@@ -26,7 +26,7 @@ export default function SpeedChallengePage() {
   const params = useParams();
   const gameCode = params.code as string;
 
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
   
   // Redirect to home if no vocabulary (game must be accessed via game link)
   useEffect(() => {
@@ -51,7 +51,7 @@ export default function SpeedChallengePage() {
 
   // Generate new question
   const generateNewQuestion = useCallback(() => {
-    const availableCards = (vocabulary || []).filter(
+    const availableCards = ((vocabulary && Array.isArray(vocabulary) ? vocabulary : [])).filter(
       card => !usedCards.has(card.id)
     );
 

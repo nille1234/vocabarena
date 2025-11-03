@@ -40,7 +40,7 @@ export default function SentenceBuilderPage() {
 
   // Generate new question
   const generateNewQuestion = useCallback(() => {
-    const availableCards = (vocabulary || []).filter(
+    const availableCards = ((vocabulary && Array.isArray(vocabulary) ? vocabulary : [])).filter(
       card => !usedCards.has(card.id)
     );
 

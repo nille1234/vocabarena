@@ -22,7 +22,7 @@ type Question = {
 export default function WordLadderPage() {
   const router = useRouter();
   const params = useParams();
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
 
   const [currentRung, setCurrentRung] = useState(0);
   const [score, setScore] = useState(0);
@@ -41,7 +41,7 @@ export default function WordLadderPage() {
 
   // Generate new question
   const generateNewQuestion = useCallback(() => {
-    const availableCards = (vocabulary || []).filter(
+    const availableCards = ((vocabulary && Array.isArray(vocabulary) ? vocabulary : [])).filter(
       card => !usedCards.has(card.id)
     );
 
