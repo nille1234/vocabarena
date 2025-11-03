@@ -17,7 +17,7 @@ import confetti from "canvas-confetti";
 export default function CrosswordPage() {
   const params = useParams();
   const router = useRouter();
-  const vocabulary = useGameVocabulary();
+  const { vocabulary, loading, error } = useGameVocabulary();
   const { session } = useGameStore();
 
   const [crossword, setCrossword] = useState<CrosswordGrid | null>(null);
@@ -40,14 +40,13 @@ export default function CrosswordPage() {
   // Initialize crossword on mount
   useEffect(() => {
     if (!vocabulary || vocabulary.length === 0) {
-      router.push(`/game/${params.code}`);
       return;
     }
 
     console.log('Generating crossword with language:', language);
     const generated = generateCrossword(vocabulary, wordCount, language);
     setCrossword(generated);
-  }, [vocabulary, wordCount, language, router]);
+  }, [vocabulary, wordCount, language]);
 
   // Handle cell input
   const handleCellInput = (row: number, col: number, value: string) => {
@@ -158,7 +157,8 @@ export default function CrosswordPage() {
     setIsComplete(false);
   };
 
-  if (!vocabulary || vocabulary.length === 0 || !crossword) {
+  // Show loading state
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-500/10 via-purple-500/10 to-fuchsia-500/10">
         <Card className="border-none shadow-2xl bg-background/80 backdrop-blur-xl">
@@ -166,6 +166,37 @@ export default function CrosswordPage() {
             <div className="flex items-center gap-3">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               <p className="text-muted-foreground">Loading crossword puzzle...</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-500/10 via-purple-500/10 to-fuchsia-500/10">
+        <Card className="border-none shadow-2xl bg-background/80 backdrop-blur-xl">
+          <CardContent className="pt-6">
+            <p className="text-destructive">{error}</p>
+            <Button onClick={() => router.push('/')} className="mt-4">
+              Back to Home
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!vocabulary || vocabulary.length === 0 || !crossword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-500/10 via-purple-500/10 to-fuchsia-500/10">
+        <Card className="border-none shadow-2xl bg-background/80 backdrop-blur-xl">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <p className="text-muted-foreground">Preparing crossword...</p>
             </div>
           </CardContent>
         </Card>
