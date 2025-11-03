@@ -27,7 +27,7 @@ export default function GravityPage() {
   const gameCode = params.code as string;
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const vocabularyData = useGameVocabulary();
+  const { vocabulary: vocabularyData, loading, error } = useGameVocabulary();
   
   // Redirect to home if no vocabulary (game must be accessed via game link)
   useEffect(() => {
@@ -45,10 +45,10 @@ export default function GravityPage() {
   const [wordsDestroyed, setWordsDestroyed] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [baseSpeed, setBaseSpeed] = useState(0.8);
-  const [vocabulary] = useState(() => vocabularyData ? shuffleArray(vocabularyData) : []);
+  const [vocabulary] = useState(() => vocabularyData && Array.isArray(vocabularyData) ? shuffleArray(vocabularyData) : []);
 
   // Show loading state while redirecting
-  if (!vocabularyData || !Array.isArray(vocabulary) || vocabulary.length === 0) {
+  if (!vocabularyData || !Array.isArray(vocabularyData) || vocabularyData.length === 0) {
     return null;
   }
   
