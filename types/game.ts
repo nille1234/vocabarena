@@ -1,8 +1,8 @@
 export type GameMode = 
-  | 'flashcards' | 'match' | 'gravity' | 'learn' | 'spell' | 'test' 
-  | 'hangman' | 'falling-words' | 'mystery-word' | 'word-ladder' 
-  | 'word-maze' | 'speed-challenge' | 'survival' | 'sentence-builder'
-  | 'memory' | 'othello' | 'tic-tac-toe' | 'hex' | 'crossword';
+  | 'match' | 'gravity' 
+  | 'hangman'
+  | 'memory' | 'othello' | 'tic-tac-toe' | 'hex' | 'crossword'
+  | 'word-scramble' | 'word-search' | 'word-finder';
 
 export type GameStatus = 'waiting' | 'active' | 'completed';
 
@@ -36,6 +36,8 @@ export interface GameSettings {
   timeLimit?: number; // seconds per question
   cardCount?: number;
   crosswordWordCount?: number; // number of words in crossword puzzle
+  wordSearchWordCount?: number; // number of words in word search grid
+  wordSearchShowList?: boolean; // whether to show word list with translations in word search
   allowHints: boolean;
   playMusic: boolean;
   playSFX: boolean;
@@ -85,6 +87,11 @@ export interface GameLink {
   listId: string;
   vocabularyList?: VocabularyList;
   enabledGames: GameMode[];
+  crosswordWordCount?: number; // number of words in crossword puzzle
+  wordSearchWordCount?: number; // number of words in word search grid
+  wordSearchShowList?: boolean; // whether to show word list with translations in word search
+  othelloAnswerMode?: 'text-input' | 'multiple-choice'; // answer mode for othello
+  ticTacToeAnswerMode?: 'text-input' | 'multiple-choice'; // answer mode for five-in-a-row
   createdAt: Date;
   expiresAt?: Date;
   isActive: boolean;

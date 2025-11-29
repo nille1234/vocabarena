@@ -1,5 +1,6 @@
 import { VocabCard } from '@/types/game';
 import { shuffleArray } from './gameLogic';
+import { getFirstDefinition } from './definitionParser';
 
 /**
  * Generate a multiple choice question with distractors
@@ -18,13 +19,13 @@ export function generateMultipleChoice(
 
   if (questionType === 'term-to-def') {
     const options = shuffleArray([
-      card.definition,
-      ...distractors.map(d => d.definition)
+      getFirstDefinition(card.definition),
+      ...distractors.map(d => getFirstDefinition(d.definition))
     ]);
 
     return {
       question: card.term,
-      correctAnswer: card.definition,
+      correctAnswer: getFirstDefinition(card.definition),
       options
     };
   } else {
@@ -34,7 +35,7 @@ export function generateMultipleChoice(
     ]);
 
     return {
-      question: card.definition,
+      question: getFirstDefinition(card.definition),
       correctAnswer: card.term,
       options
     };
@@ -53,33 +54,56 @@ export function generateFillInBlank(
   options: string[];
   blankPosition: number;
 } {
-  // Contextual sentence templates using the Danish word
-  const sentenceTemplates = [
-    { template: `She experienced severe ______ before the exam.`, type: 'definition' as const },
-    { template: `The patient showed signs of ______ during the consultation.`, type: 'definition' as const },
-    { template: `After months of ______, he finally sought help.`, type: 'definition' as const },
-    { template: `The doctor diagnosed her with ______.`, type: 'definition' as const },
-    { template: `He struggled with ______ for many years.`, type: 'definition' as const },
-    { template: `The ______ was affecting her daily life.`, type: 'definition' as const },
-    { template: `Treatment for ______ can take time.`, type: 'definition' as const },
-    { template: `She learned to cope with her ______.`, type: 'definition' as const },
+  // Check if this is a German card
+  const isGerman = !!card.germanTerm;
+  
+  // German sentence templates
+  const germanTemplates = [
+    `Sie erlebte schwere ______ vor der Prüfung.`,
+    `Der Patient zeigte Anzeichen von ______ während der Konsultation.`,
+    `Nach Monaten von ______ suchte er endlich Hilfe.`,
+    `Der Arzt diagnostizierte bei ihr ______.`,
+    `Er kämpfte viele Jahre mit ______.`,
+    `Die ______ beeinträchtigte ihr tägliches Leben.`,
+    `Die Behandlung von ______ kann Zeit brauchen.`,
+    `Sie lernte, mit ihrer ______ umzugehen.`,
   ];
 
-  const selectedTemplate = sentenceTemplates[Math.floor(Math.random() * sentenceTemplates.length)];
-  const template = selectedTemplate.template;
-  const blankPosition = template.indexOf('_____');
+  // English sentence templates
+  const englishTemplates = [
+    `She experienced severe ______ before the exam.`,
+    `The patient showed signs of ______ during the consultation.`,
+    `After months of ______, he finally sought help.`,
+    `The doctor diagnosed her with ______.`,
+    `He struggled with ______ for many years.`,
+    `The ______ was affecting her daily life.`,
+    `Treatment for ______ can take time.`,
+    `She learned to cope with her ______.`,
+  ];
 
-  // Use Danish definition as the answer
-  const correctAnswer = card.definition;
-  const questionType = 'definition';
+  const templates = isGerman ? germanTemplates : englishTemplates;
+  const template = templates[Math.floor(Math.random() * templates.length)];
+  const blankPosition = template.indexOf('______');
 
-  // Generate distractors
-  const otherCards = allCards.filter(c => c.id !== card.id);
-  const distractors = shuffleArray(otherCards).slice(0, 3);
+  // Use the appropriate term (German or English)
+  const correctAnswer = isGerman ? card.germanTerm! : card.term;
+
+  // Generate distractors from cards of the same language
+  // For German cards: only use other German cards
+  // For English cards: only use other English cards (cards WITHOUT germanTerm)
+  const sameLanguageCards = allCards.filter(c => {
+    if (c.id === card.id) return false;
+    // If current card is German, only include other German cards
+    if (isGerman) return !!c.germanTerm;
+    // If current card is English, only include other English cards (no germanTerm)
+    return !c.germanTerm;
+  });
+  
+  const distractors = shuffleArray(sameLanguageCards).slice(0, 3);
 
   const options = shuffleArray([
     correctAnswer,
-    ...distractors.map(d => d.definition)
+    ...distractors.map(d => isGerman ? d.germanTerm! : d.term)
   ]);
 
   return {

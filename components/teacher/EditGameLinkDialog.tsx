@@ -10,15 +10,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Settings, BookOpen } from "lucide-react";
 import { toast } from "sonner";
-import { updateGameLink } from "@/lib/supabase/vocabularyManagement";
-import { GameLink, GameMode } from "@/types/game";
-import { ALL_GAME_MODES } from "@/lib/constants/gameModes";
+import {
+  updateGameLink,
+  getVocabularyListById,
+  addVocabularyCard,
+  updateVocabularyCard,
+  deleteVocabularyCard,
+} from "@/lib/supabase/vocabularyManagement";
+import { GameLink, GameMode, VocabCard } from "@/types/game";
+import { WordListEditor } from "./WordListEditor";
+import { GameSelectionStep } from "./dialog-steps/GameSelectionStep";
 
 interface EditGameLinkDialogProps {
   open: boolean;
@@ -34,29 +40,56 @@ export function EditGameLinkDialog({
   onSuccess,
 }: EditGameLinkDialogProps) {
   const [selectedGames, setSelectedGames] = useState<GameMode[]>([]);
+  const [crosswordWordCount, setCrosswordWordCount] = useState<number>(10);
+  const [wordSearchWordCount, setWordSearchWordCount] = useState<number>(10);
+  const [wordSearchShowList, setWordSearchShowList] = useState<boolean>(true);
+  const [othelloAnswerMode, setOthelloAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [ticTacToeAnswerMode, setTicTacToeAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [vocabularyCards, setVocabularyCards] = useState<VocabCard[]>([]);
+  const [originalCards, setOriginalCards] = useState<VocabCard[]>([]);
+  const [vocabularyListName, setVocabularyListName] = useState<string>("");
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Initialize selected games when dialog opens or gameLink changes
+  // Load vocabulary list when dialog opens
   useEffect(() => {
-    if (gameLink) {
+    if (gameLink && open) {
       setSelectedGames(gameLink.enabledGames);
+      setCrosswordWordCount(gameLink.crosswordWordCount || 10);
+      setWordSearchWordCount(gameLink.wordSearchWordCount || 10);
+      setWordSearchShowList(gameLink.wordSearchShowList !== undefined ? gameLink.wordSearchShowList : true);
+      setOthelloAnswerMode(gameLink.othelloAnswerMode || 'text-input');
+      setTicTacToeAnswerMode(gameLink.ticTacToeAnswerMode || 'text-input');
+      loadVocabularyList();
     }
-  }, [gameLink]);
+  }, [gameLink, open]);
 
-  const handleToggleGame = (gameId: GameMode) => {
-    setSelectedGames((prev) =>
-      prev.includes(gameId)
-        ? prev.filter((id) => id !== gameId)
-        : [...prev, gameId]
-    );
-  };
+  // Track unsaved changes
+  useEffect(() => {
+    if (vocabularyCards.length > 0 && originalCards.length > 0) {
+      const hasChanges = JSON.stringify(vocabularyCards) !== JSON.stringify(originalCards);
+      setHasUnsavedChanges(hasChanges);
+    }
+  }, [vocabularyCards, originalCards]);
 
-  const handleSelectAll = () => {
-    setSelectedGames(ALL_GAME_MODES.map((game) => game.id));
-  };
+  const loadVocabularyList = async () => {
+    if (!gameLink?.listId) return;
 
-  const handleDeselectAll = () => {
-    setSelectedGames([]);
+    setLoading(true);
+    try {
+      const list = await getVocabularyListById(gameLink.listId);
+      if (list) {
+        setVocabularyCards(list.cards);
+        setOriginalCards(list.cards);
+        setVocabularyListName(list.name);
+      }
+    } catch (error) {
+      console.error("Error loading vocabulary list:", error);
+      toast.error("Failed to load vocabulary list");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -67,10 +100,35 @@ export function EditGameLinkDialog({
       return;
     }
 
+    // Validate crossword word count
+    if (selectedGames.includes('crossword')) {
+      if (crosswordWordCount < 5 || crosswordWordCount > 20) {
+        toast.error("Crossword word count must be between 5 and 20");
+        return;
+      }
+    }
+
+    // Validate minimum word count
+    if (vocabularyCards.length < 20) {
+      toast.error("Vocabulary list must have at least 20 words");
+      return;
+    }
+
     setSaving(true);
     try {
+      // Save vocabulary changes if any
+      if (hasUnsavedChanges) {
+        await saveVocabularyChanges();
+      }
+
+      // Update game link settings
       const result = await updateGameLink(gameLink.id, {
         enabledGames: selectedGames,
+        crosswordWordCount: selectedGames.includes('crossword') ? crosswordWordCount : undefined,
+        wordSearchWordCount: selectedGames.includes('word-search') ? wordSearchWordCount : undefined,
+        wordSearchShowList: selectedGames.includes('word-search') ? wordSearchShowList : undefined,
+        othelloAnswerMode: selectedGames.includes('othello') ? othelloAnswerMode : undefined,
+        ticTacToeAnswerMode: selectedGames.includes('tic-tac-toe') ? ticTacToeAnswerMode : undefined,
       });
 
       if (result.success) {
@@ -88,121 +146,150 @@ export function EditGameLinkDialog({
     }
   };
 
+  const saveVocabularyChanges = async () => {
+    if (!gameLink?.listId) return;
+
+    // Find cards to add, update, or delete
+    const originalCardIds = new Set(originalCards.map(c => c.id));
+    const currentCardIds = new Set(vocabularyCards.map(c => c.id));
+
+    // Cards to add (have temp IDs)
+    const cardsToAdd = vocabularyCards.filter(c => c.id.startsWith('temp-'));
+    
+    // Cards to update (exist in both but may have changed)
+    const cardsToUpdate = vocabularyCards.filter(c => 
+      !c.id.startsWith('temp-') && originalCardIds.has(c.id)
+    );
+
+    // Cards to delete (in original but not in current)
+    const cardsToDelete = originalCards.filter(c => !currentCardIds.has(c.id));
+
+    // Execute operations
+    for (const card of cardsToAdd) {
+      await addVocabularyCard(gameLink.listId, {
+        term: card.term,
+        definition: card.definition,
+        germanTerm: card.germanTerm,
+      });
+    }
+
+    for (const card of cardsToUpdate) {
+      const original = originalCards.find(c => c.id === card.id);
+      if (original && (
+        original.term !== card.term ||
+        original.definition !== card.definition ||
+        original.germanTerm !== card.germanTerm
+      )) {
+        await updateVocabularyCard(card.id, {
+          term: card.term,
+          definition: card.definition,
+          germanTerm: card.germanTerm,
+        });
+      }
+    }
+
+    for (const card of cardsToDelete) {
+      await deleteVocabularyCard(card.id, gameLink.listId);
+    }
+  };
+
   if (!gameLink) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl font-heading">
-            Edit Games for "{gameLink.name}"
+            Edit "{gameLink.name}"
           </DialogTitle>
           <DialogDescription>
-            Select which games students can access with this link
+            Configure game settings and edit vocabulary words
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {/* Game Link Info */}
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="pt-6">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">Code:</span>
-                  <Badge variant="secondary" className="font-mono">
-                    {gameLink.code}
-                  </Badge>
+        <Tabs defaultValue="games" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="games">
+              <Settings className="h-4 w-4 mr-2" />
+              Game Settings
+            </TabsTrigger>
+            <TabsTrigger value="words">
+              <BookOpen className="h-4 w-4 mr-2" />
+              Edit Words
+              {hasUnsavedChanges && (
+                <Badge variant="destructive" className="ml-2 h-5 px-1.5">
+                  •
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="games" className="space-y-6">
+            {/* Game Link Info */}
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="pt-6">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Code:</span>
+                    <Badge variant="secondary" className="font-mono">
+                      {gameLink.code}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Vocabulary List:
+                    </span>
+                    <span className="font-medium">
+                      {gameLink.vocabularyList?.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Word Count:
+                    </span>
+                    <span className="font-medium">
+                      {gameLink.vocabularyList?.cards.length || 0} words
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    Vocabulary List:
-                  </span>
-                  <span className="font-medium">
-                    {gameLink.vocabularyList?.name}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    Word Count:
-                  </span>
-                  <span className="font-medium">
-                    {gameLink.vocabularyList?.cards.length || 0} words
-                  </span>
-                </div>
+              </CardContent>
+            </Card>
+
+            {/* Game Selection with Settings */}
+            <GameSelectionStep
+              selectedGames={selectedGames}
+              onSelectedGamesChange={setSelectedGames}
+              crosswordWordCount={crosswordWordCount}
+              onCrosswordWordCountChange={setCrosswordWordCount}
+              wordSearchWordCount={wordSearchWordCount}
+              onWordSearchWordCountChange={setWordSearchWordCount}
+              wordSearchShowList={wordSearchShowList}
+              onWordSearchShowListChange={setWordSearchShowList}
+              othelloAnswerMode={othelloAnswerMode}
+              onOthelloAnswerModeChange={setOthelloAnswerMode}
+              ticTacToeAnswerMode={ticTacToeAnswerMode}
+              onTicTacToeAnswerModeChange={setTicTacToeAnswerMode}
+            />
+          </TabsContent>
+
+          <TabsContent value="words" className="space-y-4">
+            {loading ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+                <p className="text-sm text-muted-foreground mt-2">
+                  Loading vocabulary list...
+                </p>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Selection Controls */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">
-                {selectedGames.length} of {ALL_GAME_MODES.length} games selected
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSelectAll}
-                disabled={selectedGames.length === ALL_GAME_MODES.length}
-              >
-                Select All
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDeselectAll}
-                disabled={selectedGames.length === 0}
-              >
-                Deselect All
-              </Button>
-            </div>
-          </div>
-
-          {/* Game Selection Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {ALL_GAME_MODES.map((game) => {
-              const isSelected = selectedGames.includes(game.id);
-              return (
-                <Card
-                  key={game.id}
-                  className={`cursor-pointer transition-all ${
-                    isSelected
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                  onClick={() => handleToggleGame(game.id)}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        id={`game-${game.id}`}
-                        checked={isSelected}
-                        onCheckedChange={() => handleToggleGame(game.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <Label
-                          htmlFor={`game-${game.id}`}
-                          className="cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xl">{game.icon}</span>
-                            <span className="font-semibold">{game.name}</span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {game.description}
-                          </p>
-                        </Label>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
+            ) : (
+              <WordListEditor
+                cards={vocabularyCards}
+                listId={gameLink?.listId || ""}
+                listName={vocabularyListName}
+                onCardsChange={setVocabularyCards}
+              />
+            )}
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter>
           <Button

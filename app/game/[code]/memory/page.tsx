@@ -53,10 +53,13 @@ export default function MemoryGamePage() {
     // Create card pairs
     const cardPairs: MemoryCard[] = [];
     selectedWords.forEach((vocab, index) => {
+      // Extract only the first Danish word (before the first comma)
+      const firstTranslation = vocab.definition.split(',')[0].trim();
+      
       cardPairs.push({
         id: `word-${index}`,
         word: vocab.term,
-        translation: vocab.definition,
+        translation: firstTranslation,
         type: "word",
         isFlipped: false,
         isMatched: false,
@@ -64,7 +67,7 @@ export default function MemoryGamePage() {
       cardPairs.push({
         id: `translation-${index}`,
         word: vocab.term,
-        translation: vocab.definition,
+        translation: firstTranslation,
         type: "translation",
         isFlipped: false,
         isMatched: false,

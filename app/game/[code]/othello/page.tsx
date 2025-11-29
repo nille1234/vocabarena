@@ -3,11 +3,14 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, RotateCcw, Trophy, Circle } from "lucide-react";
-import { useGameStore } from "@/lib/store/gameStore";
+import { ArrowLeft, RotateCcw, Trophy } from "lucide-react";
+import { checkGameAccessClient } from "@/lib/supabase/gameAccess.client";
+import { useGameVocabulary } from "@/hooks/use-game-vocabulary";
+import { generateMultipleChoiceOptions } from "@/lib/utils/wordClassifier";
+import { OthelloBoard } from "@/components/game/othello/OthelloBoard";
+import { OthelloScoreCard } from "@/components/game/othello/OthelloScoreCard";
+import { OthelloPrompt } from "@/components/game/othello/OthelloPrompt";
 import confetti from "canvas-confetti";
 
 type CellState = "empty" | "black" | "white";
@@ -16,27 +19,52 @@ type BoardState = CellState[][];
 interface TranslationPrompt {
   word: string;
   correctAnswer: string;
+  choices?: string[];
 }
 
 export default function OthelloGamePage() {
   const params = useParams();
   const router = useRouter();
-  const { session } = useGameStore();
+  const gameCode = params.code as string;
+  
+  const { vocabulary, loading: vocabLoading, error: vocabError } = useGameVocabulary();
 
+  const [gameMode, setGameMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [loading, setLoading] = useState(true);
   const [board, setBoard] = useState<BoardState>([]);
   const [currentPlayer, setCurrentPlayer] = useState<"black" | "white">("black");
   const [scores, setScores] = useState({ black: 2, white: 2 });
   const [showPrompt, setShowPrompt] = useState(false);
   const [currentPrompt, setCurrentPrompt] = useState<TranslationPrompt | null>(null);
   const [userAnswer, setUserAnswer] = useState("");
+  const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<{ row: number; col: number } | null>(null);
   const [feedback, setFeedback] = useState<"correct" | "incorrect" | null>(null);
   const [gameOver, setGameOver] = useState(false);
   const [validMoves, setValidMoves] = useState<Set<string>>(new Set());
 
+  // Fetch game mode setting from teacher
   useEffect(() => {
-    initializeBoard();
-  }, []);
+    async function fetchGameMode() {
+      const result = await checkGameAccessClient(gameCode);
+      console.log('Game access result:', result);
+      console.log('Othello answer mode from API:', result.gameLink?.othelloAnswerMode);
+      
+      // Always set the game mode from the API result, or use default
+      const mode = result.gameLink?.othelloAnswerMode || 'text-input';
+      setGameMode(mode);
+      console.log('Set game mode to:', mode);
+      
+      setLoading(false);
+    }
+    fetchGameMode();
+  }, [gameCode]);
+
+  useEffect(() => {
+    if (!loading) {
+      initializeBoard();
+    }
+  }, [loading]);
 
   useEffect(() => {
     if (board.length > 0) {
@@ -51,7 +79,6 @@ export default function OthelloGamePage() {
       .fill(null)
       .map(() => Array(8).fill("empty"));
 
-    // Set initial pieces
     newBoard[3][3] = "white";
     newBoard[3][4] = "black";
     newBoard[4][3] = "black";
@@ -107,16 +134,79 @@ export default function OthelloGamePage() {
   const handleCellClick = (row: number, col: number) => {
     if (!validMoves.has(`${row}-${col}`) || showPrompt) return;
 
-    // Show translation prompt
-    if (session?.cards && session.cards.length > 0) {
-      const randomCard = session.cards[Math.floor(Math.random() * session.cards.length)];
-      setCurrentPrompt({
-        word: randomCard.term,
-        correctAnswer: randomCard.definition.toLowerCase().trim(),
-      });
+    if (vocabulary && vocabulary.length > 0) {
+      const randomCard = vocabulary[Math.floor(Math.random() * vocabulary.length)];
+      
+      const parts = randomCard.term.split(/\s*–\s*/);
+      
+      let wordToTranslate = '';
+      let acceptableAnswers = '';
+      
+      if (parts.length >= 2) {
+        const englishPart = parts[0].trim();
+        const englishWords = englishPart.split(/[,\s]+/);
+        wordToTranslate = englishWords[0];
+        acceptableAnswers = parts.slice(1).join(',').trim();
+      } else {
+        const termWords = randomCard.term.split(/\s+/);
+        wordToTranslate = termWords[0];
+        acceptableAnswers = termWords.slice(1).join(' ');
+      }
+      
+      const allAnswers = [acceptableAnswers, randomCard.definition]
+        .filter(s => s && s.trim().length > 0)
+        .join(',');
+      
+      const prompt: TranslationPrompt = {
+        word: wordToTranslate,
+        correctAnswer: allAnswers.toLowerCase().trim(),
+      };
+      
+      if (gameMode === "multiple-choice") {
+        // Split by commas/semicolons to get complete translation phrases
+        const translationOptions = allAnswers.split(/[,;]+/).map(s => s.trim()).filter(s => s.length > 0);
+        const correctChoice = translationOptions[0]; // Use first complete phrase (e.g., "at spise" not just "at")
+        
+        // Get all possible Danish answers from all cards as complete phrases
+        const allDanishPhrases = vocabulary.flatMap((card: any) => {
+          const cardParts = card.term.split(/\s*–\s*/);
+          if (cardParts.length >= 2) {
+            const danishPart = cardParts.slice(1).join(',').trim();
+            // Split by commas to get complete phrases, not individual words
+            return danishPart.split(/[,;]+/).map((phrase: string) => phrase.trim()).filter((p: string) => p.length > 0);
+          }
+          const words = card.term.split(/\s+/);
+          if (words.length > 1) {
+            return [words.slice(1).join(' ')];
+          }
+          // Split definition by commas to get complete phrases
+          return card.definition.split(/[,;]+/).map((phrase: string) => phrase.trim()).filter((p: string) => p.length > 0);
+        });
+        
+        // Filter out the correct answer from wrong options pool
+        const wrongOptions = allDanishPhrases.filter(phrase => 
+          phrase.toLowerCase() !== correctChoice.toLowerCase()
+        );
+        
+      // Generate 4 choices (1 correct + 3 wrong) using word classifier
+      const allChoices = generateMultipleChoiceOptions(correctChoice, wrongOptions, 4);
+        
+        // Shuffle using Fisher-Yates to randomize position
+        for (let i = allChoices.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [allChoices[i], allChoices[j]] = [allChoices[j], allChoices[i]];
+        }
+        
+        prompt.choices = allChoices;
+        // Store the correct choice for validation
+        prompt.correctAnswer = correctChoice.toLowerCase().trim();
+      }
+      
+      setCurrentPrompt(prompt);
       setPendingMove({ row, col });
       setShowPrompt(true);
       setUserAnswer("");
+      setSelectedChoice(null);
       setFeedback(null);
     }
   };
@@ -124,16 +214,27 @@ export default function OthelloGamePage() {
   const handleSubmitAnswer = () => {
     if (!currentPrompt || !pendingMove) return;
 
-    const isCorrect = userAnswer.toLowerCase().trim() === currentPrompt.correctAnswer;
+    let isCorrect = false;
+    
+    if (gameMode === "multiple-choice") {
+      // In multiple-choice mode, only accept the exact displayed choice
+      isCorrect = selectedChoice?.toLowerCase().trim() === currentPrompt.correctAnswer.toLowerCase().trim();
+    } else {
+      // In text-input mode, accept any of the correct variations
+      const correctWords = currentPrompt.correctAnswer
+        .split(/[\s,;]+/)
+        .map(word => word.trim().toLowerCase())
+        .filter(word => word.length > 0);
+      const userAnswerLower = userAnswer.toLowerCase().trim();
+      isCorrect = correctWords.some(word => userAnswerLower === word);
+    }
 
     setFeedback(isCorrect ? "correct" : "incorrect");
 
     setTimeout(() => {
       if (isCorrect) {
-        // Make the move
         makeMove(pendingMove.row, pendingMove.col);
       } else {
-        // Skip turn
         setCurrentPlayer(currentPlayer === "black" ? "white" : "black");
       }
 
@@ -141,6 +242,7 @@ export default function OthelloGamePage() {
       setCurrentPrompt(null);
       setPendingMove(null);
       setUserAnswer("");
+      setSelectedChoice(null);
       setFeedback(null);
     }, 1500);
   };
@@ -156,7 +258,6 @@ export default function OthelloGamePage() {
       [1, -1],  [1, 0],  [1, 1],
     ];
 
-    // Flip pieces
     for (const [dx, dy] of directions) {
       const toFlip: [number, number][] = [];
       let r = row + dx;
@@ -198,7 +299,6 @@ export default function OthelloGamePage() {
   };
 
   const checkGameOver = () => {
-    // Game is over if no valid moves for both players
     const hasBlackMoves = Array.from({ length: 8 }, (_, r) =>
       Array.from({ length: 8 }, (_, c) => isValidMove(r, c, "black"))
     ).flat().some(Boolean);
@@ -228,10 +328,31 @@ export default function OthelloGamePage() {
     setPendingMove(null);
   };
 
+  if (loading || vocabLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center">
+        <p className="text-muted-foreground">Loading game...</p>
+      </div>
+    );
+  }
+
+  if (vocabError || !vocabulary || vocabulary.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <p className="text-destructive">{vocabError || 'No vocabulary found'}</p>
+          <Button onClick={() => router.push(`/game/${gameCode}`)}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Game Selection
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <Button variant="ghost" onClick={() => router.back()}>
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -246,149 +367,44 @@ export default function OthelloGamePage() {
           </Button>
         </div>
 
-        {/* Score Display */}
         <div className="max-w-2xl mx-auto mb-8">
           <div className="grid grid-cols-2 gap-4">
-            <Card className={currentPlayer === "black" ? "border-primary" : ""}>
-              <CardContent className="p-4 text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Circle className="h-6 w-6 fill-black text-black" />
-                  <p className="text-sm font-medium">Black</p>
-                </div>
-                <p className="text-3xl font-bold">{scores.black}</p>
-                {currentPlayer === "black" && !gameOver && (
-                  <p className="text-xs text-primary mt-1">Current Turn</p>
-                )}
-              </CardContent>
-            </Card>
-            <Card className={currentPlayer === "white" ? "border-secondary" : ""}>
-              <CardContent className="p-4 text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Circle className="h-6 w-6 fill-white text-white" />
-                  <p className="text-sm font-medium">White</p>
-                </div>
-                <p className="text-3xl font-bold">{scores.white}</p>
-                {currentPlayer === "white" && !gameOver && (
-                  <p className="text-xs text-secondary mt-1">Current Turn</p>
-                )}
-              </CardContent>
-            </Card>
+            <OthelloScoreCard
+              player="black"
+              score={scores.black}
+              isCurrentPlayer={currentPlayer === "black"}
+              isGameOver={gameOver}
+            />
+            <OthelloScoreCard
+              player="white"
+              score={scores.white}
+              isCurrentPlayer={currentPlayer === "white"}
+              isGameOver={gameOver}
+            />
           </div>
         </div>
 
-        {/* Game Board */}
         <div className="max-w-2xl mx-auto">
-          <div className="bg-green-800/20 p-4 rounded-lg border-2 border-green-800/40">
-            <div className="grid grid-cols-8 gap-1">
-              {board.map((row, rowIndex) =>
-                row.map((cell, colIndex) => {
-                  const isValid = validMoves.has(`${rowIndex}-${colIndex}`);
-                  return (
-                    <motion.div
-                      key={`${rowIndex}-${colIndex}`}
-                      whileHover={isValid ? { scale: 1.05 } : {}}
-                      whileTap={isValid ? { scale: 0.95 } : {}}
-                    >
-                      <div
-                        className={`
-                          aspect-square bg-green-700/40 border border-green-800/60 rounded-sm
-                          flex items-center justify-center cursor-pointer
-                          ${isValid ? "hover:bg-green-600/40" : ""}
-                        `}
-                        onClick={() => handleCellClick(rowIndex, colIndex)}
-                      >
-                        {cell !== "empty" && (
-                          <motion.div
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            transition={{ type: "spring", stiffness: 300 }}
-                          >
-                            <Circle
-                              className={`h-8 w-8 md:h-10 md:w-10 ${
-                                cell === "black"
-                                  ? "fill-black text-black"
-                                  : "fill-white text-white"
-                              }`}
-                            />
-                          </motion.div>
-                        )}
-                        {isValid && cell === "empty" && (
-                          <div className="h-2 w-2 rounded-full bg-yellow-400/50" />
-                        )}
-                      </div>
-                    </motion.div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+          <OthelloBoard
+            board={board}
+            validMoves={validMoves}
+            onCellClick={handleCellClick}
+            showPrompt={showPrompt}
+          />
         </div>
 
-        {/* Translation Prompt Modal */}
-        <AnimatePresence>
-          {showPrompt && currentPrompt && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50"
-            >
-              <motion.div
-                initial={{ scale: 0.9, y: 20 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.9, y: 20 }}
-                className="bg-card p-8 rounded-lg shadow-lg max-w-md mx-4 w-full"
-              >
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-heading font-bold text-center">
-                    Translate to Danish
-                  </h2>
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-primary mb-4">
-                      {currentPrompt.word}
-                    </p>
-                  </div>
-                  <Input
-                    value={userAnswer}
-                    onChange={(e) => setUserAnswer(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSubmitAnswer()}
-                    placeholder="Type your answer..."
-                    className="text-lg"
-                    autoFocus
-                    disabled={feedback !== null}
-                  />
-                  {feedback && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={`text-center p-4 rounded-lg ${
-                        feedback === "correct"
-                          ? "bg-green-500/20 text-green-500"
-                          : "bg-red-500/20 text-red-500"
-                      }`}
-                    >
-                      <p className="font-bold">
-                        {feedback === "correct" ? "✓ Correct!" : "✗ Incorrect"}
-                      </p>
-                      {feedback === "incorrect" && (
-                        <p className="text-sm mt-1">
-                          Correct answer: {currentPrompt.correctAnswer}
-                        </p>
-                      )}
-                    </motion.div>
-                  )}
-                  {!feedback && (
-                    <Button onClick={handleSubmitAnswer} className="w-full">
-                      Check Answer
-                    </Button>
-                  )}
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <OthelloPrompt
+          show={showPrompt}
+          prompt={currentPrompt}
+          gameMode={gameMode}
+          userAnswer={userAnswer}
+          selectedChoice={selectedChoice}
+          feedback={feedback}
+          onAnswerChange={setUserAnswer}
+          onChoiceSelect={setSelectedChoice}
+          onSubmit={handleSubmitAnswer}
+        />
 
-        {/* Game Over Modal */}
         <AnimatePresence>
           {gameOver && (
             <motion.div
@@ -418,7 +434,7 @@ export default function OthelloGamePage() {
                   <div className="flex gap-4 justify-center pt-4">
                     <Button onClick={handleNewGame}>Play Again</Button>
                     <Button variant="outline" onClick={() => router.back()}>
-                      Exit
+                      Back to Games
                     </Button>
                   </div>
                 </div>

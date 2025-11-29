@@ -114,14 +114,22 @@ export async function parseDOCX(file: File): Promise<ParseResult> {
       const line = lines[i];
       
       // Support multiple separators: – (en dash), - (hyphen with/without spaces), →, ->, =>, :
-      const separators = [' – ', ' - ', '->', '=>', '→', ':', '-'];
+      // Order matters: try more specific patterns first (with spaces) before simple hyphen
+      const separators = [' – ', ' - ', '->', '=>', '→', ':', ' -', '- ', '-'];
       let separator = '';
       let parts: string[] = [];
       
       for (const sep of separators) {
         if (line.includes(sep)) {
           separator = sep;
-          parts = line.split(sep).map(p => p.trim());
+          // Split only on the first occurrence to handle cases where definition might contain the separator
+          const index = line.indexOf(sep);
+          if (index !== -1) {
+            parts = [
+              line.substring(0, index).trim(),
+              line.substring(index + sep.length).trim()
+            ];
+          }
           break;
         }
       }
@@ -186,14 +194,22 @@ export function parsePastedText(content: string): ParseResult {
       }
       
       // Support multiple separators: – (en dash), - (hyphen with/without spaces), →, ->, =>, :, |, tab
-      const separators = [' – ', ' - ', '->', '=>', '→', ':', '-', '|', '\t'];
+      // Order matters: try more specific patterns first (with spaces) before simple hyphen
+      const separators = [' – ', ' - ', '->', '=>', '→', ':', ' -', '- ', '-', '|', '\t'];
       let separator = '';
       let parts: string[] = [];
       
       for (const sep of separators) {
         if (line.includes(sep)) {
           separator = sep;
-          parts = line.split(sep).map(p => p.trim());
+          // Split only on the first occurrence to handle cases where definition might contain the separator
+          const index = line.indexOf(sep);
+          if (index !== -1) {
+            parts = [
+              line.substring(0, index).trim(),
+              line.substring(index + sep.length).trim()
+            ];
+          }
           break;
         }
       }

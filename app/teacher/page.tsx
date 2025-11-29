@@ -1,16 +1,15 @@
-import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { requireAuth } from '@/lib/supabase/auth';
 import { TeacherDashboard } from '@/components/teacher/TeacherDashboard';
 
+// Force dynamic rendering - never cache this page
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function TeacherPage() {
-  const supabase = await createClient();
+  // Strict authentication guard - validates user and session
+  // Automatically redirects to login if authentication fails
+  const user = await requireAuth('/teacher');
   
-  const { data: { user }, error } = await supabase.auth.getUser();
-  
-  // Strict authentication check - redirect if no user or error
-  if (!user || error) {
-    redirect('/auth/login?redirectTo=/teacher');
-  }
-  
-  return <TeacherDashboard />;
+  // Pass user data to client component for additional verification
+  return <TeacherDashboard userId={user.id} userEmail={user.email || ''} />;
 }

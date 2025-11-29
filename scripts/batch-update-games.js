@@ -5,7 +5,6 @@ const path = require('path');
 
 const gamesToUpdate = [
   'hangman',
-  'sentence-builder',
   'word-maze',
   'word-ladder',
   'mystery-word',

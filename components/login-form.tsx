@@ -1,7 +1,6 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -15,36 +14,61 @@ import { Label } from '@/components/ui/label'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState } from 'react'
-import { getCurrentUserProfile } from '@/lib/supabase/userManagement'
+import { useTabSession } from '@/lib/auth/useTabSession'
 
 export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<'div'>) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const tabSessionId = useTabSession()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
     setIsLoading(true)
     setError(null)
 
+    if (!tabSessionId) {
+      setError('Session initialization failed. Please refresh the page.')
+      setIsLoading(false)
+      return
+    }
+
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          tabSessionId,
+        }),
       })
-      if (error) throw error
-      
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          setError(`Too many login attempts. Please try again later.`)
+          setRemainingAttempts(data.remainingAttempts || 0)
+        } else {
+          setError(data.error || 'Login failed')
+          setRemainingAttempts(data.remainingAttempts)
+        }
+        return
+      }
+
       // Check if password change is required
-      const profile = await getCurrentUserProfile()
-      if (profile?.passwordChangeRequired) {
+      if (data.user?.passwordChangeRequired) {
         router.push('/auth/update-password')
         return
       }
-      
+
       // Redirect to the original destination or default to /teacher
       const redirectTo = searchParams.get('redirectTo') || '/teacher'
       router.push(redirectTo)
@@ -75,6 +99,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={!tabSessionId}
                 />
               </div>
               <div className="grid gap-2">
@@ -93,11 +118,21 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  disabled={!tabSessionId}
                 />
               </div>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Logging in...' : 'Login'}
+              {error && (
+                <div className="space-y-1">
+                  <p className="text-sm text-red-500">{error}</p>
+                  {remainingAttempts !== null && remainingAttempts > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {remainingAttempts} attempt{remainingAttempts !== 1 ? 's' : ''} remaining
+                    </p>
+                  )}
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={isLoading || !tabSessionId}>
+                {!tabSessionId ? 'Initializing...' : isLoading ? 'Logging in...' : 'Login'}
               </Button>
             </div>
           </form>

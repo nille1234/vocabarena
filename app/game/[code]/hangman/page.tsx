@@ -4,32 +4,33 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useGameVocabulary } from "@/hooks/use-game-vocabulary";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Volume2, VolumeX, Lightbulb } from "lucide-react";
+import { ArrowLeft, Volume2, VolumeX, RotateCcw } from "lucide-react";
 import { getAudioManager } from "@/lib/utils/audioManager";
 import { getRevealedWord, checkLetter } from "@/lib/utils/questionGenerator";
 import { ScoreDisplay } from "@/components/game/ScoreDisplay";
 import { GameEndScreen } from "@/components/game/GameEndScreen";
-import { getQuestionTerm } from "@/lib/store/languageStore";
 import confetti from "canvas-confetti";
-
-const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZÆØÅ'.split('');
+import { shuffleArray } from "@/lib/utils/vocabularyShuffle";
+import { cleanTerm } from "@/lib/utils/hangmanHelpers";
+import { HangmanModeSelect } from "@/components/game/hangman/HangmanModeSelect";
+import { HangmanPlayerScores } from "@/components/game/hangman/HangmanPlayerScores";
+import { HangmanGameBoard } from "@/components/game/hangman/HangmanGameBoard";
+import { HangmanRoundComplete } from "@/components/game/hangman/HangmanRoundComplete";
 
 export default function HangmanPage() {
   const router = useRouter();
   const params = useParams();
-
   const { vocabulary, loading, error } = useGameVocabulary();
-  
-  // Redirect to home if no vocabulary (game must be accessed via game link)
+
+  // Redirect to home if no vocabulary
   useEffect(() => {
     if (!vocabulary) {
-      router.push('/');
+      router.push("/");
     }
   }, [vocabulary, router]);
 
+  const [gameMode, setGameMode] = useState<"select" | "single" | "two-player">("select");
   const [currentCard, setCurrentCard] = useState<any>(null);
   const [guessedLetters, setGuessedLetters] = useState<string[]>([]);
   const [wrongGuesses, setWrongGuesses] = useState(0);
@@ -39,52 +40,115 @@ export default function HangmanPage() {
   const [isRoundComplete, setIsRoundComplete] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [usedCards, setUsedCards] = useState<Set<string>>(new Set());
   const [hintUsed, setHintUsed] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [shuffledVocabulary, setShuffledVocabulary] = useState<any[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Two-player mode state
+  const [currentPlayer, setCurrentPlayer] = useState<1 | 2>(1);
+  const [player1Score, setPlayer1Score] = useState(0);
+  const [player2Score, setPlayer2Score] = useState(0);
+  const [player1Correct, setPlayer1Correct] = useState(0);
+  const [player2Correct, setPlayer2Correct] = useState(0);
+
+  // Timer state
+  const [timeLimit, setTimeLimit] = useState(60);
+  const [timeRemaining, setTimeRemaining] = useState(60);
+  const [isTimerActive, setIsTimerActive] = useState(false);
 
   const audioManager = getAudioManager();
-  const MAX_WRONG_GUESSES = 6;
+  const MAX_WRONG_GUESSES = 3;
 
-  // Check if word is complete
-  const revealedWord = getRevealedWord(currentCard.term, guessedLetters);
-  const isWordComplete = !revealedWord.includes('_');
+  // Shuffle vocabulary
+  const shuffleVocabulary = useCallback(() => {
+    if (!vocabulary || !Array.isArray(vocabulary) || vocabulary.length === 0) return;
 
-  // Calculate score for correct letters
-  const correctLettersCount = guessedLetters.filter(letter => 
-    checkLetter(currentCard.term, letter)
-  ).length;
+    const shuffled = shuffleArray(vocabulary);
+    setShuffledVocabulary(shuffled);
+    setCurrentIndex(0);
+  }, [vocabulary]);
+
+  // Initialize audio context
+  useEffect(() => {
+    const initAudio = () => {
+      try {
+        audioManager.playTick();
+      } catch (error) {
+        console.warn("Audio initialization failed:", error);
+      }
+    };
+
+    document.addEventListener("click", initAudio, { once: true });
+
+    return () => {
+      document.removeEventListener("click", initAudio);
+    };
+  }, [audioManager]);
+
+  // Timer countdown effect
+  useEffect(() => {
+    if (gameMode === "two-player" && isTimerActive && timeRemaining > 0 && !isRoundComplete) {
+      const interval = setInterval(() => {
+        setTimeRemaining((prev) => {
+          if (prev <= 1) {
+            return prev;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }
+  }, [gameMode, isTimerActive, timeRemaining, isRoundComplete]);
+
+  // Handle time expiration
+  const handleTimeExpired = useCallback(() => {
+    if (!isMuted) audioManager.playError();
+    setIsTimerActive(false);
+    setIsRoundComplete(true);
+    setRoundsPlayed((prev) => prev + 1);
+  }, [isMuted, audioManager]);
+
+  // Get cleaned term and check if word is complete
+  const cleanedTerm = currentCard ? cleanTerm(currentCard.term) : "";
+  const revealedWord = cleanedTerm ? getRevealedWord(cleanedTerm, guessedLetters) : "";
+  const isWordComplete = Boolean(revealedWord) && !revealedWord.includes("_");
+
+  // Calculate correct letters count
+  const correctLettersCount = cleanedTerm
+    ? guessedLetters.filter((letter) => checkLetter(cleanedTerm, letter)).length
+    : 0;
 
   // Start new round
   const startNewRound = useCallback(() => {
-    if (!vocabulary || !Array.isArray(vocabulary) || vocabulary.length === 0) return;
-    
-    const availableCards = vocabulary.filter(
-      card => !usedCards.has(card.id)
-    );
+    if (shuffledVocabulary.length === 0) return;
 
-    if (availableCards.length === 0) {
-      setUsedCards(new Set());
-      return startNewRound();
+    // If we've gone through all cards, reshuffle
+    if (currentIndex >= shuffledVocabulary.length) {
+      shuffleVocabulary();
+      return;
     }
 
-    const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
-    setCurrentCard(randomCard);
-    setUsedCards(prev => new Set(Array.from(prev).concat(randomCard.id)));
+    const nextCard = shuffledVocabulary[currentIndex];
+    setCurrentCard(nextCard);
+    setCurrentIndex((prev) => prev + 1);
     setGuessedLetters([]);
     setWrongGuesses(0);
     setIsRoundComplete(false);
     setHintUsed(false);
     setShowHint(false);
-  }, [usedCards, vocabulary]);
+    setTimeRemaining(timeLimit);
+    setIsTimerActive(gameMode === "two-player");
+  }, [shuffledVocabulary, currentIndex, shuffleVocabulary, timeLimit, gameMode]);
 
-  // Handle hint button
+  // Handle hint
   const handleHint = () => {
     if (hintUsed || isRoundComplete) return;
-    
+
     setHintUsed(true);
     setShowHint(true);
-    setWrongGuesses(prev => prev + 1); // Costs 1 life
+    setWrongGuesses((prev) => prev + 1);
     if (!isMuted) audioManager.playTick();
   };
 
@@ -95,25 +159,53 @@ export default function HangmanPage() {
     const newGuessedLetters = [...guessedLetters, letter.toLowerCase()];
     setGuessedLetters(newGuessedLetters);
 
-    if (checkLetter(currentCard.term, letter)) {
-      // Correct guess - add points per letter revealed
-      const letterCount = currentCard.term.toLowerCase().split('').filter(
-        (c: string) => c === letter.toLowerCase()
-      ).length;
-      setScore(prev => prev + (10 * letterCount));
+    if (checkLetter(cleanedTerm, letter)) {
+      // Correct guess
+      const letterCount = cleanedTerm
+        .toLowerCase()
+        .split("")
+        .filter((c: string) => c === letter.toLowerCase()).length;
+
+      if (gameMode === "two-player") {
+        if (currentPlayer === 1) {
+          setPlayer1Score((prev) => prev + 10 * letterCount);
+        } else {
+          setPlayer2Score((prev) => prev + 10 * letterCount);
+        }
+      } else {
+        setScore((prev) => prev + 10 * letterCount);
+      }
+
       if (!isMuted) audioManager.playSuccess();
-      
+
       // Check if word is now complete
-      const newRevealed = getRevealedWord(currentCard.term, newGuessedLetters);
-      if (!newRevealed.includes('_')) {
+      const newRevealed = getRevealedWord(cleanedTerm, newGuessedLetters);
+      if (!newRevealed.includes("_")) {
         setIsRoundComplete(true);
-        setScore(prev => prev + 50); // Bonus for completing word
-        setCorrectRounds(prev => prev + 1);
-        setRoundsPlayed(prev => prev + 1);
-        if (!isMuted) audioManager.playCelebration();
+        setIsTimerActive(false);
+
+        if (gameMode === "two-player") {
+          if (currentPlayer === 1) {
+            setPlayer1Score((prev) => prev + 50);
+            setPlayer1Correct((prev) => prev + 1);
+          } else {
+            setPlayer2Score((prev) => prev + 50);
+            setPlayer2Correct((prev) => prev + 1);
+          }
+        } else {
+          setScore((prev) => prev + 50);
+        }
+
+        setCorrectRounds((prev) => prev + 1);
+        setRoundsPlayed((prev) => prev + 1);
+
+        if (!isMuted) {
+          audioManager.playCelebration();
+          setTimeout(() => audioManager.playSuccess(), 200);
+        }
         confetti({
-          particleCount: 50,
-          spread: 60,
+          particleCount: 100,
+          spread: 70,
           origin: { y: 0.6 },
         });
       }
@@ -125,13 +217,18 @@ export default function HangmanPage() {
 
       if (newWrongGuesses >= MAX_WRONG_GUESSES) {
         setIsRoundComplete(true);
-        setRoundsPlayed(prev => prev + 1);
+        setIsTimerActive(false);
+        setRoundsPlayed((prev) => prev + 1);
       }
     }
   };
 
   // Handle next round
   const handleNextRound = () => {
+    if (gameMode === "two-player") {
+      setCurrentPlayer(currentPlayer === 1 ? 2 : 1);
+    }
+
     if (roundsPlayed >= 10) {
       setIsGameOver(true);
     } else {
@@ -139,31 +236,110 @@ export default function HangmanPage() {
     }
   };
 
-  // Initialize first round
+  // Initialize shuffled vocabulary
   useEffect(() => {
-    if (vocabulary && Array.isArray(vocabulary) && vocabulary.length > 0) {
+    if (
+      vocabulary &&
+      Array.isArray(vocabulary) &&
+      vocabulary.length > 0 &&
+      shuffledVocabulary.length === 0
+    ) {
+      shuffleVocabulary();
+    }
+  }, [vocabulary, shuffledVocabulary.length, shuffleVocabulary]);
+
+  // Start first round
+  useEffect(() => {
+    if (shuffledVocabulary.length > 0 && !currentCard && gameMode !== "select") {
       startNewRound();
     }
-  }, [vocabulary, startNewRound]);
+  }, [shuffledVocabulary, currentCard, startNewRound, gameMode]);
 
   // Handle play again
   const handlePlayAgain = () => {
     setScore(0);
     setRoundsPlayed(0);
     setCorrectRounds(0);
-    setUsedCards(new Set());
     setIsGameOver(false);
-    startNewRound();
+    setPlayer1Score(0);
+    setPlayer2Score(0);
+    setPlayer1Correct(0);
+    setPlayer2Correct(0);
+    setCurrentPlayer(1);
+    shuffleVocabulary();
+  };
+
+  const handleBackToModeSelect = () => {
+    setGameMode("select");
+    setScore(0);
+    setRoundsPlayed(0);
+    setCorrectRounds(0);
+    setIsGameOver(false);
+    setPlayer1Score(0);
+    setPlayer2Score(0);
+    setPlayer1Correct(0);
+    setPlayer2Correct(0);
+    setCurrentPlayer(1);
+    setIsTimerActive(false);
+  };
+
+  const handleModeSelect = (mode: "single" | "two-player", timerDuration?: number) => {
+    setGameMode(mode);
+    if (mode === "two-player" && timerDuration) {
+      setTimeLimit(timerDuration);
+      setTimeRemaining(timerDuration);
+    }
+    shuffleVocabulary();
   };
 
   const accuracy = roundsPlayed > 0 ? correctRounds / roundsPlayed : 0;
 
-  // Show loading state while redirecting or loading vocabulary
-  if (!vocabulary || !currentCard) {
+  // Show loading state
+  if (!vocabulary) {
     return null;
   }
 
+  // Mode selection screen
+  if (gameMode === "select") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
+        <div className="container mx-auto px-4 py-8">
+          <Button variant="ghost" onClick={() => router.push(`/game/${params.code}`)}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Games
+          </Button>
+
+          <HangmanModeSelect onSelectMode={handleModeSelect} />
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentCard) {
+    return null;
+  }
+
+  // Game over screen
   if (isGameOver) {
+    if (gameMode === "two-player") {
+      const winner =
+        player1Score > player2Score ? "Player 1" : player2Score > player1Score ? "Player 2" : "Tie";
+      return (
+        <GameEndScreen
+          title="Hangman Complete!"
+          score={player1Score + player2Score}
+          accuracy={accuracy}
+          message={
+            winner === "Tie"
+              ? `It's a tie! Both players scored equally.\nPlayer 1: ${player1Score} points (${player1Correct} correct)\nPlayer 2: ${player2Score} points (${player2Correct} correct)`
+              : `${winner} wins!\nPlayer 1: ${player1Score} points (${player1Correct} correct)\nPlayer 2: ${player2Score} points (${player2Correct} correct)`
+          }
+          onPlayAgain={handlePlayAgain}
+          onBackToMenu={handleBackToModeSelect}
+        />
+      );
+    }
+
     return (
       <GameEndScreen
         title="Hangman Complete!"
@@ -171,11 +347,12 @@ export default function HangmanPage() {
         accuracy={accuracy}
         message={`You solved ${correctRounds} out of ${roundsPlayed} words!`}
         onPlayAgain={handlePlayAgain}
-        onBackToMenu={() => router.push(`/game/${params.code}`)}
+        onBackToMenu={handleBackToModeSelect}
       />
     );
   }
 
+  // Main game screen
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
@@ -187,10 +364,28 @@ export default function HangmanPage() {
           </Button>
 
           <div className="flex items-center gap-4">
-            <ScoreDisplay score={score} />
+            {gameMode === "two-player" ? (
+              <HangmanPlayerScores
+                currentPlayer={currentPlayer}
+                player1Score={player1Score}
+                player2Score={player2Score}
+                showTimer={true as boolean}
+                timeRemaining={timeRemaining}
+                timeLimit={timeLimit}
+                isTimerActive={isTimerActive}
+                onTimeExpired={handleTimeExpired}
+                isMuted={isMuted}
+              />
+            ) : (
+              <ScoreDisplay score={score} />
+            )}
             <Badge variant="secondary" className="px-4 py-2">
               Round {roundsPlayed + 1} / 10
             </Badge>
+            <Button variant="outline" size="sm" onClick={handlePlayAgain} className="gap-2">
+              <RotateCcw className="h-4 w-4" />
+              New Game
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -206,173 +401,38 @@ export default function HangmanPage() {
 
         {/* Game Title */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-heading font-bold mb-2">🎯 Hangman</h1>
-          <p className="text-muted-foreground">
-            Guess the English word letter by letter
-          </p>
+          <h1 className="text-3xl font-heading font-bold mb-2">
+            🎯 Hangman {gameMode === "two-player" && `- Player ${currentPlayer}'s Turn`}
+          </h1>
+          <p className="text-muted-foreground">Guess the German/English word letter by letter</p>
         </div>
 
         {/* Game Area */}
         <div className="max-w-3xl mx-auto">
-          <Card className="border-primary/50 bg-gradient-to-br from-primary/5 to-accent/5">
-            <CardContent className="pt-8 pb-6">
-              {/* Lives indicator - Modern icons */}
-              <div className="text-center mb-8">
-                <div className="flex justify-center gap-2 mb-4">
-                  {Array.from({ length: MAX_WRONG_GUESSES }).map((_, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ scale: 1 }}
-                      animate={{ scale: i < wrongGuesses ? 0.8 : 1 }}
-                      className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${
-                        i < wrongGuesses
-                          ? 'bg-red-500/20 border-red-500'
-                          : 'bg-blue-500/20 border-blue-500'
-                      }`}
-                    >
-                      <Lightbulb className={`h-5 w-5 ${
-                        i < wrongGuesses ? 'text-red-500' : 'text-blue-500'
-                      }`} />
-                    </motion.div>
-                  ))}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {MAX_WRONG_GUESSES - wrongGuesses} lives remaining
-                </p>
-              </div>
+          <HangmanGameBoard
+            currentCard={currentCard}
+            guessedLetters={guessedLetters}
+            wrongGuesses={wrongGuesses}
+            maxWrongGuesses={MAX_WRONG_GUESSES}
+            hintUsed={hintUsed}
+            showHint={showHint}
+            isRoundComplete={isRoundComplete}
+            onLetterGuess={handleLetterGuess}
+            onHint={handleHint}
+          />
 
-              {/* Clue */}
-              <div className="text-center mb-6">
-                <p className="text-sm text-muted-foreground mb-2">
-                  Danish word (clue):
-                </p>
-                <h2 className="text-2xl font-bold mb-2">"{currentCard.definition}"</h2>
-                
-                {/* Hint button and display */}
-                {!isRoundComplete && (
-                  <div className="mt-4">
-                    {!hintUsed ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleHint}
-                        className="gap-2"
-                      >
-                        <Lightbulb className="h-4 w-4" />
-                        Use Hint (Costs 1 life)
-                      </Button>
-                    ) : showHint && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-sm text-blue-500 font-medium"
-                      >
-                        💡 First letter: {currentCard.term[0].toUpperCase()}
-                      </motion.div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Revealed Word */}
-              <div className="text-center mb-8">
-                <div className="flex justify-center gap-2 flex-wrap">
-                  {revealedWord.split('').map((char, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ delay: index * 0.05 }}
-                      className={`
-                        w-12 h-16 flex items-center justify-center text-2xl font-bold
-                        border-2 rounded-lg
-                        ${char === '_' ? 'border-border bg-background' : 'border-primary bg-primary/10'}
-                        ${char === ' ' || char === '-' ? 'border-transparent' : ''}
-                      `}
-                    >
-                      {char === '_' ? '' : char.toUpperCase()}
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Alphabet */}
-              {!isRoundComplete && (
-                <div className="grid grid-cols-9 gap-2 mb-6">
-                  {ALPHABET.map((letter) => {
-                    const isGuessed = guessedLetters.includes(letter.toLowerCase());
-                    const isCorrect = isGuessed && checkLetter(currentCard.term, letter);
-                    const isWrong = isGuessed && !checkLetter(currentCard.term, letter);
-
-                    return (
-                      <Button
-                        key={letter}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleLetterGuess(letter)}
-                        disabled={isGuessed}
-                        className={`
-                          ${isCorrect ? 'bg-green-500/20 border-green-500 text-green-700 dark:text-green-300' : ''}
-                          ${isWrong ? 'bg-red-500/20 border-red-500 text-red-700 dark:text-red-300 opacity-50' : ''}
-                        `}
-                      >
-                        {letter}
-                      </Button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Round Complete */}
-              {isRoundComplete && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-center"
-                >
-                  {isWordComplete ? (
-                    <>
-                      <p className="text-2xl font-bold text-green-500 mb-4">
-                        ✓ Correct!
-                      </p>
-                      <div className="bg-background/50 rounded-lg p-4 mb-4">
-                        <p className="text-muted-foreground mb-2">
-                          <span className="font-bold">{currentCard.definition}</span> (Danish) = <span className="font-bold">{getQuestionTerm(currentCard)}</span> (English)
-                        </p>
-                        <p className="text-sm text-muted-foreground italic">
-                          Example: "She experienced {getQuestionTerm(currentCard).toLowerCase()} before the exam."
-                        </p>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-6">
-                        +{correctLettersCount * 10} points (letters) + 50 points (completion) = {correctLettersCount * 10 + 50} total
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-2xl font-bold text-red-500 mb-4">
-                        Out of Lives!
-                      </p>
-                      <div className="bg-background/50 rounded-lg p-4 mb-4">
-                        <p className="text-muted-foreground mb-2">
-                          The answer was: <span className="font-bold">{getQuestionTerm(currentCard)}</span>
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          <span className="font-bold">{currentCard.definition}</span> (Danish) = <span className="font-bold">{getQuestionTerm(currentCard)}</span> (English)
-                        </p>
-                        <p className="text-sm text-muted-foreground italic mt-2">
-                          Example: "She experienced {getQuestionTerm(currentCard).toLowerCase()} before the exam."
-                        </p>
-                      </div>
-                    </>
-                  )}
-                  
-                  <Button onClick={handleNextRound} size="lg">
-                    {roundsPlayed >= 9 ? 'View Results' : 'Next Word'}
-                  </Button>
-                </motion.div>
-              )}
-            </CardContent>
-          </Card>
+          {/* Round Complete */}
+          {isRoundComplete && (
+            <div className="mt-6">
+              <HangmanRoundComplete
+                isWordComplete={isWordComplete}
+                currentCard={currentCard}
+                correctLettersCount={correctLettersCount}
+                roundsPlayed={roundsPlayed}
+                onNextRound={handleNextRound}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

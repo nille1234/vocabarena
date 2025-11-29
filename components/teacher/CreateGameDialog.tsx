@@ -144,7 +144,7 @@ export function CreateGameDialog({ open, onOpenChange }: CreateGameDialogProps) 
       id: `session-${code}`,
       code: code,
       name: gameName.trim() || `Game ${code}`, // Use provided name or default
-      mode: 'flashcards',
+      mode: 'match',
       status: 'waiting',
       cards: parsedCards,
       settings: {

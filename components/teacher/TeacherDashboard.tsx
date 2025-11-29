@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
-import { Plus, ArrowLeft, Loader2, Users } from "lucide-react";
+import { Plus, ArrowLeft, Loader2, Users, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { CreateGameLinkDialog } from "@/components/teacher/CreateGameLinkDialog";
 import { EditGameLinkDialog } from "@/components/teacher/EditGameLinkDialog";
 import { InviteTeacherDialog } from "@/components/teacher/InviteTeacherDialog";
+import { ChangePasswordDialog } from "@/components/teacher/ChangePasswordDialog";
 import { toast } from "sonner";
 import {
   getAllVocabularyLists,
@@ -23,12 +24,22 @@ import { VocabularyListsTab } from "./VocabularyListsTab";
 import { GameLinksTab } from "./GameLinksTab";
 import { UserManagementTab } from "./UserManagementTab";
 import { LogoutButton } from "@/components/logout-button";
+import { KeyRound } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 
-export function TeacherDashboard() {
+interface TeacherDashboardProps {
+  userId: string;
+  userEmail: string;
+}
+
+export function TeacherDashboard({ userId, userEmail }: TeacherDashboardProps) {
+  const router = useRouter();
   // Dialog states
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingGameLink, setEditingGameLink] = useState<GameLink | null>(null);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [isChangePasswordDialogOpen, setIsChangePasswordDialogOpen] = useState(false);
   
   // Data
   const [vocabularyLists, setVocabularyLists] = useState<VocabularyList[]>([]);
@@ -36,10 +47,61 @@ export function TeacherDashboard() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
+  const [authVerified, setAuthVerified] = useState(false);
+
+  // Client-side authentication verification with periodic checks
+  useEffect(() => {
+    let isSubscribed = true;
+    let intervalId: NodeJS.Timeout;
+
+    const verifyAuth = async () => {
+      const supabase = createClient();
+      const { data: { user }, error } = await supabase.auth.getUser();
+      
+      // If component unmounted, don't update state
+      if (!isSubscribed) return;
+      
+      // If no user or error, redirect to login
+      if (!user || error || user.id !== userId) {
+        console.error('Authentication verification failed:', error);
+        toast.error('Session expired. Please log in again.');
+        router.push('/auth/login?redirectTo=/teacher');
+        return;
+      }
+      
+      setAuthVerified(true);
+    };
+    
+    // Initial verification
+    verifyAuth();
+
+    // Set up periodic session validation (every 30 seconds)
+    intervalId = setInterval(() => {
+      verifyAuth();
+    }, 30000);
+
+    // Listen for auth state changes
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
+        toast.error('Session expired. Please log in again.');
+        router.push('/auth/login?redirectTo=/teacher');
+      }
+    });
+
+    // Cleanup
+    return () => {
+      isSubscribed = false;
+      clearInterval(intervalId);
+      subscription.unsubscribe();
+    };
+  }, [userId, router]);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (authVerified) {
+      loadData();
+    }
+  }, [authVerified]);
 
   const loadData = async () => {
     setLoading(true);
@@ -75,18 +137,50 @@ export function TeacherDashboard() {
     }
   };
 
+  // Show loading state while verifying authentication
+  if (!authVerified) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+              <div>
+                <h2 className="text-xl font-semibold mb-2">Verifying Authentication</h2>
+                <p className="text-sm text-muted-foreground">
+                  Please wait while we verify your credentials...
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
-          <Link href="/">
-            <Button variant="ghost">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Home
+          <div className="flex items-center gap-2">
+            <Link href="/">
+              <Button variant="ghost">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Home
+              </Button>
+            </Link>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsChangePasswordDialogOpen(true)}
+            >
+              <KeyRound className="mr-2 h-4 w-4" />
+              Change Password
             </Button>
-          </Link>
-          <LogoutButton />
+            <LogoutButton />
+          </div>
         </div>
 
         <motion.div
@@ -222,6 +316,7 @@ export function TeacherDashboard() {
                         users={users}
                         currentUserId={currentUserProfile?.id || ''}
                         onInviteTeacher={() => setIsInviteDialogOpen(true)}
+                        onUserDeleted={loadData}
                       />
                     )}
                   </CardContent>
@@ -252,6 +347,12 @@ export function TeacherDashboard() {
         open={isInviteDialogOpen}
         onOpenChange={setIsInviteDialogOpen}
         onSuccess={loadData}
+      />
+
+      {/* Change Password Dialog */}
+      <ChangePasswordDialog
+        open={isChangePasswordDialogOpen}
+        onOpenChange={setIsChangePasswordDialogOpen}
       />
     </div>
   );

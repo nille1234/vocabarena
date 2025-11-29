@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { supabaseConfig } from './config'
 
@@ -30,4 +31,22 @@ export async function createClient() {
       },
     }
   )
+}
+
+/**
+ * Creates a Supabase client with service role privileges.
+ * WARNING: This bypasses Row Level Security (RLS). Only use for system operations
+ * like creating sessions, audit logs, and other administrative tasks.
+ * Never use this for user-facing data operations.
+ */
+export function createServiceRoleClient() {
+  const supabaseUrl = supabaseConfig.url
+  const supabaseServiceRoleKey = supabaseConfig.serviceRoleKey
+
+  return createSupabaseClient(supabaseUrl, supabaseServiceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
 }

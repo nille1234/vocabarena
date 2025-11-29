@@ -24,6 +24,7 @@ export default function CrosswordPage() {
   const [userAnswers, setUserAnswers] = useState<Map<string, string>>(new Map());
   const [completedWords, setCompletedWords] = useState<Set<number>>(new Set());
   const [selectedWord, setSelectedWord] = useState<number | null>(null);
+  const [currentDirection, setCurrentDirection] = useState<'across' | 'down' | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
 
@@ -48,6 +49,19 @@ export default function CrosswordPage() {
     setCrossword(generated);
   }, [vocabData, wordCount, language]);
 
+  // Find which word(s) a cell belongs to
+  const findWordsForCell = (row: number, col: number): CrosswordWord[] => {
+    if (!crossword) return [];
+    
+    return crossword.words.filter(word => {
+      if (word.direction === 'across') {
+        return word.row === row && col >= word.col && col < word.col + word.word.length;
+      } else {
+        return word.col === col && row >= word.row && row < word.row + word.word.length;
+      }
+    });
+  };
+
   // Handle cell input
   const handleCellInput = (row: number, col: number, value: string) => {
     if (!crossword) return;
@@ -58,6 +72,7 @@ export default function CrosswordPage() {
     if (value === '') {
       newAnswers.delete(key);
     } else {
+      // Always take the last character typed, allowing overwriting
       const letter = value.slice(-1).toUpperCase();
       newAnswers.set(key, letter);
     }
@@ -70,7 +85,11 @@ export default function CrosswordPage() {
       if (checkWordWithAnswers(word, newAnswers)) {
         newCompletedWords.add(word.number);
         if (!completedWords.has(word.number)) {
-          if (!isMuted) audioManager.playSuccess();
+          if (!isMuted) {
+            audioManager.playSuccess();
+            // Play an additional celebration sound for word completion
+            setTimeout(() => audioManager.playTick(), 100);
+          }
         }
       }
     });
@@ -90,7 +109,97 @@ export default function CrosswordPage() {
 
     // Auto-advance to next cell
     if (value !== '') {
-      moveToNextCell(row, col);
+      const wordsForCell = findWordsForCell(row, col);
+      let wordToUse: CrosswordWord | undefined;
+      
+      // Priority 1: Use selected word if this cell belongs to it
+      if (selectedWord) {
+        wordToUse = wordsForCell.find(w => w.number === selectedWord);
+      }
+      
+      // Priority 2: Use current direction if set
+      if (!wordToUse && currentDirection) {
+        wordToUse = wordsForCell.find(w => w.direction === currentDirection);
+      }
+      
+      // Priority 3: Default to across, or first available
+      if (!wordToUse && wordsForCell.length > 0) {
+        wordToUse = wordsForCell.find(w => w.direction === 'across') || wordsForCell[0];
+      }
+      
+      if (wordToUse) {
+        // Maintain the direction for next input
+        setCurrentDirection(wordToUse.direction);
+        moveToNextCellInWord(row, col, wordToUse);
+      }
+    }
+  };
+
+  // Handle keyboard events for backspace/delete
+  const handleKeyDown = (row: number, col: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!crossword) return;
+
+    if (e.key === 'Backspace') {
+      const key = `${row}-${col}`;
+      const currentValue = userAnswers.get(key);
+
+      // If current cell is empty, move to previous cell and delete
+      if (!currentValue || currentValue === '') {
+        e.preventDefault();
+        
+        // Find the word this cell belongs to (prefer current direction)
+        let wordToUse = selectedWord ? crossword.words.find(w => w.number === selectedWord) : null;
+        
+        if (!wordToUse) {
+          const wordsForCell = findWordsForCell(row, col);
+          if (wordsForCell.length > 0) {
+            // Prefer the word matching current direction
+            if (currentDirection) {
+              wordToUse = wordsForCell.find(w => w.direction === currentDirection);
+            }
+            if (!wordToUse) {
+              wordToUse = wordsForCell.find(w => w.direction === 'across') || wordsForCell[0];
+            }
+          }
+        }
+        
+        if (wordToUse) {
+          moveToPreviousCellInWord(row, col, wordToUse);
+        }
+      }
+      // If current cell has a value, let the default backspace behavior clear it
+    }
+  };
+
+  const moveToPreviousCellInWord = (row: number, col: number, word: CrosswordWord) => {
+    if (!crossword) return;
+
+    let currentIndex = -1;
+    for (let i = 0; i < word.word.length; i++) {
+      const checkRow = word.direction === 'across' ? word.row : word.row + i;
+      const checkCol = word.direction === 'across' ? word.col + i : word.col;
+      if (checkRow === row && checkCol === col) {
+        currentIndex = i;
+        break;
+      }
+    }
+
+    if (currentIndex > 0) {
+      const prevIndex = currentIndex - 1;
+      const prevRow = word.direction === 'across' ? word.row : word.row + prevIndex;
+      const prevCol = word.direction === 'across' ? word.col + prevIndex : word.col;
+      const prevKey = `${prevRow}-${prevCol}`;
+      
+      // Clear the previous cell
+      const newAnswers = new Map(userAnswers);
+      newAnswers.delete(prevKey);
+      setUserAnswers(newAnswers);
+      
+      // Focus the previous cell
+      const prevInput = inputRefs.current.get(prevKey);
+      if (prevInput) {
+        prevInput.focus();
+      }
     }
   };
 
@@ -107,11 +216,8 @@ export default function CrosswordPage() {
     return true;
   };
 
-  const moveToNextCell = (row: number, col: number) => {
-    if (!crossword || !selectedWord) return;
-
-    const word = crossword.words.find(w => w.number === selectedWord);
-    if (!word) return;
+  const moveToNextCellInWord = (row: number, col: number, word: CrosswordWord) => {
+    if (!crossword) return;
 
     let currentIndex = -1;
     for (let i = 0; i < word.word.length; i++) {
@@ -124,6 +230,23 @@ export default function CrosswordPage() {
     }
 
     if (currentIndex >= 0 && currentIndex < word.word.length - 1) {
+      // Find the next empty cell in the word
+      for (let i = currentIndex + 1; i < word.word.length; i++) {
+        const nextRow = word.direction === 'across' ? word.row : word.row + i;
+        const nextCol = word.direction === 'across' ? word.col + i : word.col;
+        const nextKey = `${nextRow}-${nextCol}`;
+        
+        // Check if this cell is empty
+        if (!userAnswers.get(nextKey)) {
+          const nextInput = inputRefs.current.get(nextKey);
+          if (nextInput) {
+            nextInput.focus();
+            return;
+          }
+        }
+      }
+      
+      // If all remaining cells are filled, just move to the next cell anyway
       const nextIndex = currentIndex + 1;
       const nextRow = word.direction === 'across' ? word.row : word.row + nextIndex;
       const nextCol = word.direction === 'across' ? word.col + nextIndex : word.col;
@@ -139,7 +262,24 @@ export default function CrosswordPage() {
     setSelectedWord(wordNumber);
     const word = crossword?.words.find(w => w.number === wordNumber);
     if (word) {
-      const key = `${word.row}-${word.col}`;
+      setCurrentDirection(word.direction);
+      // Find the first empty cell in the word, or start at beginning
+      let targetRow = word.row;
+      let targetCol = word.col;
+      
+      for (let i = 0; i < word.word.length; i++) {
+        const checkRow = word.direction === 'across' ? word.row : word.row + i;
+        const checkCol = word.direction === 'across' ? word.col + i : word.col;
+        const checkKey = `${checkRow}-${checkCol}`;
+        
+        if (!userAnswers.get(checkKey)) {
+          targetRow = checkRow;
+          targetCol = checkCol;
+          break;
+        }
+      }
+      
+      const key = `${targetRow}-${targetCol}`;
       const input = inputRefs.current.get(key);
       if (input) {
         input.focus();
@@ -154,6 +294,7 @@ export default function CrosswordPage() {
     setUserAnswers(new Map());
     setCompletedWords(new Set());
     setSelectedWord(null);
+    setCurrentDirection(null);
     setIsComplete(false);
   };
 
@@ -327,7 +468,7 @@ export default function CrosswordPage() {
                       return (
                         <div
                           key={key}
-                          className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-800/50 dark:bg-gray-950/50"
+                          className="aspect-square w-full bg-gray-900 dark:bg-black border-2 border-gray-800 dark:border-gray-950"
                         />
                       );
                     }
@@ -338,7 +479,7 @@ export default function CrosswordPage() {
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: (rowIndex + colIndex) * 0.01 }}
-                        className={`relative w-10 h-10 sm:w-12 sm:h-12 border-2 transition-all duration-200 ${
+                        className={`relative aspect-square w-full border-2 transition-all duration-200 ${
                           isInSelectedWord 
                             ? 'border-violet-500 bg-violet-100 dark:bg-violet-900/40 shadow-lg shadow-violet-500/20' 
                             : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900'
@@ -349,7 +490,7 @@ export default function CrosswordPage() {
                         }`}
                       >
                         {cell.number && (
-                          <span className="absolute top-0.5 left-1 text-[9px] font-bold text-violet-600 dark:text-violet-400 z-10">
+                          <span className="absolute top-0 left-0 text-[10px] font-extrabold text-white bg-violet-600 dark:bg-violet-500 px-1 py-0.5 rounded-br-md shadow-sm z-10 leading-none">
                             {cell.number}
                           </span>
                         )}
@@ -361,6 +502,32 @@ export default function CrosswordPage() {
                           maxLength={1}
                           value={userAnswers.get(key) || ''}
                           onChange={(e) => handleCellInput(rowIndex, colIndex, e.target.value)}
+                          onKeyDown={(e) => handleKeyDown(rowIndex, colIndex, e)}
+                          onFocus={(e) => {
+                            // Select all text so typing replaces it
+                            e.target.select();
+                            
+                            // When focusing a cell, determine which word to use based on current direction
+                            const wordsForCell = findWordsForCell(rowIndex, colIndex);
+                            if (wordsForCell.length > 0) {
+                              let wordToHighlight: CrosswordWord | undefined;
+                              
+                              // If we have a current direction, prefer that
+                              if (currentDirection) {
+                                wordToHighlight = wordsForCell.find(w => w.direction === currentDirection);
+                              }
+                              
+                              // Otherwise default to across or first available
+                              if (!wordToHighlight) {
+                                wordToHighlight = wordsForCell.find(w => w.direction === 'across') || wordsForCell[0];
+                              }
+                              
+                              if (wordToHighlight) {
+                                setSelectedWord(wordToHighlight.number);
+                                setCurrentDirection(wordToHighlight.direction);
+                              }
+                            }
+                          }}
                           className="w-full h-full text-center font-bold uppercase border-0 p-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent text-gray-900 dark:text-gray-100"
                           style={{ fontSize: '20px' }}
                         />

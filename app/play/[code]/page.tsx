@@ -54,7 +54,7 @@ export default function PlayGamePage() {
         setGameLink(link);
         
         // Store the vocabulary in the game store for use in games
-        // Include the vocabulary list and crossword settings
+        // Include the vocabulary list and all game-specific settings
         const session: any = {
           id: `session-${code}`,
           code: code,
@@ -65,7 +65,9 @@ export default function PlayGamePage() {
           vocabularyList: link.vocabularyList, // Include full vocabulary list with language
           settings: {
             cardCount: link.vocabularyList.cards.length,
-            crosswordWordCount: (link as any).crosswordWordCount || 10, // Include crossword settings
+            crosswordWordCount: link.crosswordWordCount || 10,
+            wordSearchWordCount: link.wordSearchWordCount || 10,
+            wordSearchShowList: link.wordSearchShowList !== undefined ? link.wordSearchShowList : true,
             allowHints: true,
             playMusic: true,
             playSFX: true,

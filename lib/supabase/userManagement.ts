@@ -120,3 +120,41 @@ export async function updatePasswordChangeRequired(
     };
   }
 }
+
+export async function deleteUser(
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = createClient();
+  if (!supabase) {
+    return { success: false, error: 'Supabase client not initialized' };
+  }
+
+  try {
+    // Get session token for API authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return { success: false, error: 'No session found' };
+    }
+
+    // Call API route to delete user
+    const response = await fetch(`/api/users/${userId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      return { success: false, error: error.error || 'Failed to delete user' };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}

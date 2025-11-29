@@ -5,9 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
-import { BookOpen, ArrowLeft, Sparkles, Play } from "lucide-react";
+import { BookOpen, ArrowLeft, Sparkles, Play, AlertCircle, LayoutDashboard } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
+import { checkGameAccessClient } from "@/lib/supabase/gameAccess.client";
+import { GameMode } from "@/types/game";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { createClient } from "@/lib/supabase/client";
 
 export default function GameSelectorPage() {
   const params = useParams();
@@ -15,9 +19,60 @@ export default function GameSelectorPage() {
   const gameCode = params.code as string;
   
   const { session, getSessionByCode } = useGameStore();
+  const [mounted, setMounted] = useState(false);
+  const [enabledGames, setEnabledGames] = useState<GameMode[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isTeacher, setIsTeacher] = useState(false);
   
   // Get session from store by code
   const currentSession = session?.code === gameCode ? session : getSessionByCode(gameCode);
+  
+  // Check if user is a teacher
+  useEffect(() => {
+    async function checkTeacherStatus() {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        
+        setIsTeacher(profile?.role === 'teacher' || profile?.role === 'super_admin');
+      }
+    }
+    
+    checkTeacherStatus();
+  }, []);
+  
+  // Fetch enabled games for this game code
+  useEffect(() => {
+    async function fetchEnabledGames() {
+      setLoading(true);
+      setError(null);
+      
+      const result = await checkGameAccessClient(gameCode);
+      
+      if (!result.allowed || result.error) {
+        setError(result.error || 'Unable to access this game session');
+        setEnabledGames([]);
+      } else {
+        setEnabledGames(result.enabledGames);
+      }
+      
+      setLoading(false);
+    }
+    
+    fetchEnabledGames();
+  }, [gameCode]);
+  
+  // Prevent hydration mismatch by only rendering after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   // Available game modes with descriptions
   const gameModes = [
@@ -43,27 +98,6 @@ export default function GameSelectorPage() {
       color: 'from-pink-500/20 to-pink-600/20'
     },
     { 
-      id: 'learn', 
-      name: 'Learn', 
-      icon: '📚',
-      description: 'Learn vocabulary step by step',
-      color: 'from-green-500/20 to-green-600/20'
-    },
-    { 
-      id: 'spell', 
-      name: 'Spell', 
-      icon: '✍️',
-      description: 'Practice spelling vocabulary words',
-      color: 'from-yellow-500/20 to-yellow-600/20'
-    },
-    { 
-      id: 'test', 
-      name: 'Test', 
-      icon: '📝',
-      description: 'Test your knowledge with questions',
-      color: 'from-red-500/20 to-red-600/20'
-    },
-    { 
       id: 'hangman', 
       name: 'Hangman', 
       icon: '🎮',
@@ -71,32 +105,11 @@ export default function GameSelectorPage() {
       color: 'from-indigo-500/20 to-indigo-600/20'
     },
     { 
-      id: 'falling-words', 
-      name: 'Falling Words', 
-      icon: '⬇️',
-      description: 'Catch falling words quickly',
-      color: 'from-cyan-500/20 to-cyan-600/20'
-    },
-    { 
-      id: 'mystery-word', 
-      name: 'Mystery Word', 
-      icon: '🔍',
-      description: 'Reveal the hidden word',
-      color: 'from-orange-500/20 to-orange-600/20'
-    },
-    { 
       id: 'word-ladder', 
       name: 'Word Ladder', 
       icon: '🪜',
       description: 'Climb the ladder of words',
       color: 'from-teal-500/20 to-teal-600/20'
-    },
-    { 
-      id: 'word-maze', 
-      name: 'Word Maze', 
-      icon: '🌀',
-      description: 'Navigate through a word maze',
-      color: 'from-violet-500/20 to-violet-600/20'
     },
     { 
       id: 'speed-challenge', 
@@ -113,16 +126,44 @@ export default function GameSelectorPage() {
       color: 'from-rose-500/20 to-rose-600/20'
     },
     { 
-      id: 'sentence-builder', 
-      name: 'Sentence Builder', 
-      icon: '🔨',
-      description: 'Build sentences with vocabulary',
-      color: 'from-lime-500/20 to-lime-600/20'
+      id: 'memory', 
+      name: 'Memory', 
+      icon: '🧠',
+      description: 'Match pairs of cards',
+      color: 'from-fuchsia-500/20 to-fuchsia-600/20'
+    },
+    { 
+      id: 'othello', 
+      name: 'Othello', 
+      icon: '⚫',
+      description: 'Strategic board game',
+      color: 'from-slate-500/20 to-slate-600/20'
+    },
+    { 
+      id: 'tic-tac-toe', 
+      name: 'Five-in-a-Row', 
+      icon: '❌',
+      description: '10×10 tic-tac-toe',
+      color: 'from-emerald-500/20 to-emerald-600/20'
+    },
+    { 
+      id: 'hex', 
+      name: 'Hex', 
+      icon: '⬡',
+      description: 'Connect your sides',
+      color: 'from-sky-500/20 to-sky-600/20'
+    },
+    { 
+      id: 'crossword', 
+      name: 'Crossword', 
+      icon: '📋',
+      description: 'Solve the crossword puzzle',
+      color: 'from-stone-500/20 to-stone-600/20'
     },
   ];
 
-  // Show loading if no session is available
-  if (!currentSession) {
+  // Show loading if not mounted yet or no session is available
+  if (!mounted || !currentSession || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center">
         <div className="text-center">
@@ -134,6 +175,59 @@ export default function GameSelectorPage() {
     );
   }
 
+  // Show error if game access validation failed
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <div className="flex items-center gap-2 text-destructive mb-2">
+              <AlertCircle className="h-6 w-6" />
+              <CardTitle>Access Denied</CardTitle>
+            </div>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => router.push('/')} className="w-full">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Go Home
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Filter game modes to only show enabled ones
+  const availableGameModes = gameModes.filter(mode => 
+    enabledGames.includes(mode.id as GameMode)
+  );
+
+  // Show message if no games are enabled
+  if (availableGameModes.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <div className="flex items-center gap-2 text-muted-foreground mb-2">
+              <AlertCircle className="h-6 w-6" />
+              <CardTitle>No Games Available</CardTitle>
+            </div>
+            <CardDescription>
+              No games have been enabled for this session. Please contact your teacher.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => router.push('/')} className="w-full">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Go Home
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   const handleSelectMode = (modeId: string) => {
     router.push(`/game/${gameCode}/${modeId}`);
   };
@@ -141,15 +235,26 @@ export default function GameSelectorPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
-        {/* Back Button */}
-        <Button 
-          variant="ghost" 
-          className="mb-8"
-          onClick={() => router.push('/')}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Home
-        </Button>
+        {/* Back Button and Teacher Dashboard Button */}
+        <div className="flex items-center justify-between mb-8">
+          <Button 
+            variant="ghost"
+            onClick={() => router.back()}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
+          
+          {isTeacher && (
+            <Button 
+              variant="outline"
+              onClick={() => router.push('/teacher')}
+            >
+              <LayoutDashboard className="mr-2 h-4 w-4" />
+              Teacher Dashboard
+            </Button>
+          )}
+        </div>
 
         {/* Header */}
         <motion.div
@@ -199,9 +304,9 @@ export default function GameSelectorPage() {
                     </div>
                     <div className="text-center">
                       <div className="text-2xl font-bold text-accent">
-                        {gameModes.length}
+                        {availableGameModes.length}
                       </div>
-                      <p className="text-xs text-muted-foreground">Modes</p>
+                      <p className="text-xs text-muted-foreground">Available</p>
                     </div>
                   </div>
                 </div>
@@ -216,7 +321,7 @@ export default function GameSelectorPage() {
             transition={{ duration: 0.5, delay: 0.2 }}
           >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {gameModes.map((mode, index) => (
+              {availableGameModes.map((mode, index) => (
                 <motion.div
                   key={mode.id}
                   initial={{ opacity: 0, scale: 0.9 }}

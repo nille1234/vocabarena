@@ -1,20 +1,14 @@
-import { redirect } from 'next/navigation'
-
 import { LogoutButton } from '@/components/logout-button'
-import { createClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/supabase/auth'
 
 export default async function ProtectedPage() {
-  const supabase = await createClient()
-
-  const { data, error } = await supabase.auth.getClaims()
-  if (error || !data?.claims) {
-    redirect('/auth/login')
-  }
+  // Strict authentication guard - validates user and session
+  const user = await requireAuth('/protected')
 
   return (
     <div className="flex h-svh w-full items-center justify-center gap-2">
       <p>
-        Hello <span>{data.claims.email}</span>
+        Hello <span>{user.email}</span>
       </p>
       <LogoutButton />
     </div>

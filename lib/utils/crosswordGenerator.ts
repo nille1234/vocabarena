@@ -1,4 +1,5 @@
 import { VocabCard } from '@/types/game';
+import { getFirstDefinition } from './definitionParser';
 
 export interface CrosswordCell {
   letter: string;
@@ -33,6 +34,18 @@ interface PlacedWord {
 }
 
 /**
+ * Normalizes German characters for crossword display
+ * ä -> A, ö -> O, ü -> U, ß -> SS
+ */
+function normalizeGermanWord(word: string): string {
+  return word
+    .replace(/ä/gi, 'A')
+    .replace(/ö/gi, 'O')
+    .replace(/ü/gi, 'U')
+    .replace(/ß/g, 'SS');
+}
+
+/**
  * Generates a crossword puzzle from vocabulary cards
  */
 export function generateCrossword(cards: VocabCard[], wordCount: number, language?: 'english' | 'german'): CrosswordGrid {
@@ -40,18 +53,42 @@ export function generateCrossword(cards: VocabCard[], wordCount: number, languag
   let availableCards = cards;
   if (language === 'german') {
     // For German crosswords, only use cards that have germanTerm
-    availableCards = cards.filter(card => card.germanTerm && card.germanTerm.trim().length > 0);
+    availableCards = cards.filter(card => 
+      card.germanTerm && 
+      typeof card.germanTerm === 'string' && 
+      card.germanTerm.trim().length > 0
+    );
+    
+    // If no cards with germanTerm, fall back to using term field
+    if (availableCards.length === 0) {
+      console.warn('No cards with germanTerm found, falling back to term field');
+      availableCards = cards;
+    }
   }
   
   // Select random words
   const selectedCards = selectRandomCards(availableCards, wordCount);
   
   // Sort by length (longest first for better placement)
-  // Use the appropriate field for length calculation
   const sortedCards = [...selectedCards].sort((a, b) => {
-    const aLength = language === 'german' ? (a.germanTerm?.length || 0) : a.term.length;
-    const bLength = language === 'german' ? (b.germanTerm?.length || 0) : b.term.length;
-    return bLength - aLength;
+    let aWord: string, bWord: string;
+    
+    if (language === 'german') {
+      aWord = (a.germanTerm && typeof a.germanTerm === 'string' && a.germanTerm.trim().length > 0)
+        ? a.germanTerm.trim()
+        : a.term.trim();
+      bWord = (b.germanTerm && typeof b.germanTerm === 'string' && b.germanTerm.trim().length > 0)
+        ? b.germanTerm.trim()
+        : b.term.trim();
+      // Convert ß to SS for length calculation
+      aWord = aWord.replace(/ß/g, 'SS');
+      bWord = bWord.replace(/ß/g, 'SS');
+    } else {
+      aWord = a.term.trim();
+      bWord = b.term.trim();
+    }
+    
+    return bWord.length - aWord.length;
   });
   
   // Try to generate crossword with multiple attempts
@@ -78,7 +115,18 @@ function tryGenerateCrossword(cards: VocabCard[], seed: number, language?: 'engl
   
   // Helper function to get the word to use based on language
   const getWord = (card: VocabCard) => {
-    return language === 'german' ? (card.germanTerm || card.term) : card.term;
+    let word: string;
+    if (language === 'german') {
+      word = (card.germanTerm && typeof card.germanTerm === 'string' && card.germanTerm.trim().length > 0)
+        ? card.germanTerm.trim()
+        : card.term.trim();
+      // Convert ß to SS for crossword compatibility
+      word = word.replace(/ß/g, 'SS').trim();
+    } else {
+      word = card.term.trim();
+    }
+    
+    return word;
   };
   
   // Place first word horizontally in the middle
@@ -87,9 +135,10 @@ function tryGenerateCrossword(cards: VocabCard[], seed: number, language?: 'engl
   const startRow = Math.floor(maxSize / 2);
   const startCol = Math.floor((maxSize - firstWord.length) / 2);
   
-  placeWord(grid, firstWord, startRow, startCol, 'across');
+  const trimmedFirstWord = firstWord.trim();
+  placeWord(grid, trimmedFirstWord, startRow, startCol, 'across');
   placed.push({
-    word: firstWord,
+    word: trimmedFirstWord,
     clue: generateClue(firstCard, language),
     row: startRow,
     col: startCol,
@@ -100,13 +149,13 @@ function tryGenerateCrossword(cards: VocabCard[], seed: number, language?: 'engl
   // Try to place remaining words
   for (let i = 1; i < cards.length; i++) {
     const card = cards[i];
-    const word = getWord(card).toUpperCase();
+    const word = getWord(card).toUpperCase().trim();
     const placement = findBestPlacement(grid, word, placed, seed + i);
     
     if (placement) {
       placeWord(grid, word, placement.row, placement.col, placement.direction);
       placed.push({
-        word,
+        word: word,
         clue: generateClue(card, language),
         row: placement.row,
         col: placement.col,
@@ -116,8 +165,8 @@ function tryGenerateCrossword(cards: VocabCard[], seed: number, language?: 'engl
     }
   }
   
-  // Need at least 60% of words placed
-  if (placed.length < cards.length * 0.6) {
+  // Need at least 50% of words placed (lowered threshold to be more lenient)
+  if (placed.length < Math.max(5, cards.length * 0.5)) {
     return null;
   }
   
@@ -316,7 +365,18 @@ function trimAndConvert(grid: (string | null)[][], placed: PlacedWord[]): Crossw
 function generateSimpleCrossword(cards: VocabCard[], language?: 'english' | 'german'): CrosswordGrid {
   // Helper function to get the word to use based on language
   const getWord = (card: VocabCard) => {
-    return language === 'german' ? (card.germanTerm || card.term) : card.term;
+    let word: string;
+    if (language === 'german') {
+      word = (card.germanTerm && typeof card.germanTerm === 'string' && card.germanTerm.trim().length > 0)
+        ? card.germanTerm.trim()
+        : card.term.trim();
+      // Convert ß to SS for crossword compatibility
+      word = word.replace(/ß/g, 'SS').trim();
+    } else {
+      word = card.term.trim();
+    }
+    
+    return word;
   };
   
   // Create a simple vertical list of words
@@ -328,7 +388,7 @@ function generateSimpleCrossword(cards: VocabCard[], language?: 'english' | 'ger
   const words: CrosswordWord[] = [];
   
   cards.forEach((card, index) => {
-    const word = getWord(card).toUpperCase();
+    const word = getWord(card).toUpperCase().trim();
     const row = index * 2;
     const col = 1;
     
@@ -341,7 +401,7 @@ function generateSimpleCrossword(cards: VocabCard[], language?: 'english' | 'ger
     }
     
     words.push({
-      word,
+      word: word,
       clue: generateClue(card, language),
       row,
       col,
@@ -355,27 +415,36 @@ function generateSimpleCrossword(cards: VocabCard[], language?: 'english' | 'ger
 }
 
 function generateClue(card: VocabCard, language?: 'english' | 'german'): string {
-  // The clue should be in the same language as the answer
-  // - If answer is in English (term), use English clue (definition)
-  // - If answer is in German (germanTerm), use German clue (term, which is typically English explaining the German word)
-  
-  if (language === 'german') {
-    // For German crosswords: answer is germanTerm, clue is term (English)
-    if (card.term && card.term.length > 0) {
-      return card.term.length > 50 
-        ? card.term.substring(0, 47) + '...'
-        : card.term;
-    }
-  } else {
-    // For English crosswords: answer is term, clue is definition
-    if (card.definition && card.definition.length > 0) {
-      return card.definition.length > 50 
-        ? card.definition.substring(0, 47) + '...'
-        : card.definition;
-    }
+  // Guard clause: ensure card is defined
+  if (!card) {
+    return 'Fill in';
   }
   
-  // Fallback
-  const wordLength = language === 'german' ? (card.germanTerm?.length || card.term.length) : card.term.length;
+  // Use only the first definition (before comma, semicolon, "or", etc.)
+  if (card.definition && typeof card.definition === 'string' && card.definition.length > 0) {
+    const firstDef = getFirstDefinition(card.definition);
+    return firstDef.length > 50 
+      ? firstDef.substring(0, 47) + '...'
+      : firstDef;
+  }
+  
+  // Fallback - with safe property access
+  let word: string;
+  
+  if (language === 'german') {
+    if (card.germanTerm && typeof card.germanTerm === 'string') {
+      word = card.germanTerm.trim();
+    } else if (card.term && typeof card.term === 'string') {
+      word = card.term.trim();
+    } else {
+      word = 'xxx'; // fallback
+    }
+    // Convert ß to SS for length calculation
+    word = word.replace(/ß/g, 'SS');
+  } else {
+    word = (card.term || 'xxx').trim();
+  }
+  
+  const wordLength = word.length;
   return wordLength > 3 ? `${wordLength} letters` : 'Fill in';
 }

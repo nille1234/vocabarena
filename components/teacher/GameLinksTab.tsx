@@ -13,7 +13,8 @@ import {
   X,
   Eye,
   Power,
-  PowerOff
+  PowerOff,
+  FileText
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -222,6 +223,26 @@ export function GameLinksTab({ gameLinks, onEdit, onRefresh }: GameLinksTabProps
                   <Eye className="h-4 w-4 mr-2" />
                   Preview
                 </Button>
+                {link.enabledGames.includes('crossword') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`/teacher/game/${link.code}/crossword-answers`)}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Crossword Answers
+                  </Button>
+                )}
+                {link.enabledGames.includes('word-search') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`/teacher/game/${link.code}/word-search-answers`)}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Word Search Answers
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"

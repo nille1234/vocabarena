@@ -6,19 +6,122 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Trophy, Timer, Zap } from "lucide-react";
+import { ArrowLeft, Trophy, Timer, Zap, RotateCcw, BookOpen, CheckCircle2, XCircle } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameVocabulary } from "@/hooks/use-game-vocabulary";
-import { shuffleArray, getRandomCards } from "@/lib/utils/gameLogic";
+import { getRandomCards } from "@/lib/utils/gameLogic";
+import { getFirstDefinition } from "@/lib/utils/definitionParser";
 import confetti from "canvas-confetti";
+import { shuffleArray } from "@/lib/utils/vocabularyShuffle";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  useSensor,
+  useSensors,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 
-type MatchCard = {
+type MatchPair = {
   id: string;
-  content: string;
-  type: 'term' | 'definition';
-  originalId: string;
+  term: string;
+  definition: string;
   matched: boolean;
 };
+
+type WordProgress = {
+  unseenWords: string[]; // IDs of words not yet shown
+  correctWords: string[]; // IDs of words matched correctly on first try
+  incorrectWords: string[]; // IDs of words that had at least one wrong match
+};
+
+function DraggableCard({ id, content, disabled }: { id: string; content: string; disabled: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id,
+    disabled,
+  });
+
+  const style = transform
+    ? {
+        transform: CSS.Translate.toString(transform),
+      }
+    : undefined;
+
+  return (
+    <motion.div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: disabled ? 0 : 1, scale: disabled ? 0 : 1 }}
+      exit={{ opacity: 0, scale: 0 }}
+      className={`${isDragging ? 'opacity-50' : ''} ${disabled ? 'pointer-events-none' : ''}`}
+    >
+      <Card
+        className={`
+          cursor-grab active:cursor-grabbing transition-all duration-300
+          ${isDragging ? 'shadow-2xl scale-105' : 'hover:scale-105'}
+          bg-blue-500/10 border-blue-500/50
+        `}
+      >
+        <CardContent className="p-3 min-h-[80px] flex flex-col items-center justify-center">
+          <Badge className="mb-1 text-xs bg-blue-500 hover:bg-blue-600 text-white">
+            Term
+          </Badge>
+          <p className="text-center font-medium text-xs">{content}</p>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
+function DroppableCard({
+  id,
+  content,
+  isOver,
+  disabled,
+}: {
+  id: string;
+  content: string;
+  isOver: boolean;
+  disabled: boolean;
+}) {
+  const { setNodeRef } = useDroppable({
+    id,
+    disabled,
+  });
+
+  return (
+    <motion.div
+      ref={setNodeRef}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: disabled ? 0 : 1, scale: disabled ? 0 : 1 }}
+      exit={{ opacity: 0, scale: 0 }}
+      className={disabled ? 'pointer-events-none' : ''}
+    >
+      <Card
+        className={`
+          transition-all duration-300
+          ${isOver ? 'border-green-500 bg-green-500/20 scale-105 shadow-lg' : 'border-purple-500/50 bg-purple-500/10'}
+          ${disabled ? 'opacity-0' : ''}
+        `}
+      >
+        <CardContent className="p-3 min-h-[80px] flex flex-col items-center justify-center">
+          <Badge className="mb-1 text-xs bg-purple-500 hover:bg-purple-600 text-white">
+            Definition
+          </Badge>
+          <p className="text-center font-medium text-xs">{content}</p>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
 
 export default function MatchPage() {
   const params = useParams();
@@ -26,7 +129,7 @@ export default function MatchPage() {
   const gameCode = params.code as string;
 
   const { vocabulary, loading, error } = useGameVocabulary();
-  
+
   // Redirect to home if no vocabulary (game must be accessed via game link)
   useEffect(() => {
     if (!vocabulary) {
@@ -34,91 +137,285 @@ export default function MatchPage() {
     }
   }, [vocabulary, router]);
 
-  const [cards, setCards] = useState<MatchCard[]>([]);
-  const [selectedCards, setSelectedCards] = useState<MatchCard[]>([]);
-  const [matchedPairs, setMatchedPairs] = useState<string[]>([]);
+  const [pairs, setPairs] = useState<MatchPair[]>([]);
   const [score, setScore] = useState(0);
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [isReviewMode, setIsReviewMode] = useState(false);
+  const [allWordsCompleted, setAllWordsCompleted] = useState(false);
+  const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
+
+  // Track which words have been attempted incorrectly in current round
+  const [currentRoundErrors, setCurrentRoundErrors] = useState<Set<string>>(new Set());
+
+  // Word progress tracking
+  const [wordProgress, setWordProgress] = useState<WordProgress>({
+    unseenWords: [],
+    correctWords: [],
+    incorrectWords: [],
+  });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 8,
+      },
+    })
+  );
+
+  // Initialize word progress from vocabulary
+  useEffect(() => {
+    if (vocabulary && Array.isArray(vocabulary) && vocabulary.length > 0) {
+      // Try to load progress from localStorage
+      const storageKey = `match-progress-${gameCode}`;
+      const savedProgress = localStorage.getItem(storageKey);
+      
+      if (savedProgress) {
+        try {
+          const parsed = JSON.parse(savedProgress);
+          // Validate that saved IDs still exist in vocabulary
+          const validIds = new Set(vocabulary.map(v => v.id));
+          const validatedProgress = {
+            unseenWords: parsed.unseenWords.filter((id: string) => validIds.has(id)),
+            correctWords: parsed.correctWords.filter((id: string) => validIds.has(id)),
+            incorrectWords: parsed.incorrectWords.filter((id: string) => validIds.has(id)),
+          };
+          setWordProgress(validatedProgress);
+        } catch (e) {
+          // If parsing fails, initialize fresh
+          setWordProgress({
+            unseenWords: vocabulary.map(v => v.id),
+            correctWords: [],
+            incorrectWords: [],
+          });
+        }
+      } else {
+        // Initialize with all words as unseen
+        setWordProgress({
+          unseenWords: vocabulary.map(v => v.id),
+          correctWords: [],
+          incorrectWords: [],
+        });
+      }
+    }
+  }, [vocabulary, gameCode]);
+
+  // Save progress to localStorage whenever it changes
+  useEffect(() => {
+    if (wordProgress.unseenWords.length > 0 || wordProgress.correctWords.length > 0 || wordProgress.incorrectWords.length > 0) {
+      const storageKey = `match-progress-${gameCode}`;
+      localStorage.setItem(storageKey, JSON.stringify(wordProgress));
+    }
+  }, [wordProgress, gameCode]);
+
+  // Initialize pairs based on current mode
+  const initializeRound = () => {
+    if (!vocabulary || vocabulary.length === 0) return;
+
+    let wordsToUse: any[] = [];
+
+    // Determine which words to show
+    if (wordProgress.unseenWords.length > 0) {
+      // Show unseen words
+      setIsReviewMode(false);
+      const unseenVocab = vocabulary.filter(v => wordProgress.unseenWords.includes(v.id));
+      wordsToUse = shuffleArray(unseenVocab).slice(0, Math.min(10, unseenVocab.length));
+    } else if (wordProgress.incorrectWords.length > 0) {
+      // All words seen, now review incorrect ones
+      setIsReviewMode(true);
+      const incorrectVocab = vocabulary.filter(v => wordProgress.incorrectWords.includes(v.id));
+      wordsToUse = shuffleArray(incorrectVocab).slice(0, Math.min(10, incorrectVocab.length));
+    } else {
+      // All words mastered!
+      setAllWordsCompleted(true);
+      return;
+    }
+
+    const matchPairs: MatchPair[] = wordsToUse.map((card) => ({
+      id: card.id,
+      term: card.term,
+      definition: getFirstDefinition(card.definition),
+      matched: false,
+    }));
+
+    setPairs(matchPairs);
+    setCurrentRoundErrors(new Set());
+  };
+
+  // Initialize first round
+  useEffect(() => {
+    if (vocabulary && vocabulary.length > 0 && pairs.length === 0 && !allWordsCompleted) {
+      initializeRound();
+    }
+  }, [vocabulary, wordProgress, pairs.length, allWordsCompleted]);
+
+  // Shuffle definitions separately for display (but keep terms in order)
+  const [shuffledDefinitions, setShuffledDefinitions] = useState<MatchPair[]>([]);
+  
+  useEffect(() => {
+    if (pairs.length > 0) {
+      setShuffledDefinitions(shuffleArray([...pairs]));
+    }
+  }, [pairs]);
 
   useEffect(() => {
-    if (!vocabulary || !Array.isArray(vocabulary)) return;
-    
-    // Create match cards from vocabulary - use 15 random pairs
-    const gameCards = getRandomCards(vocabulary, 15);
-    const matchCards: MatchCard[] = [];
-    
-    gameCards.forEach(card => {
-      matchCards.push({
-        id: `${card.id}-term`,
-        content: card.term,
-        type: 'term',
-        originalId: card.id,
-        matched: false,
-      });
-      matchCards.push({
-        id: `${card.id}-def`,
-        content: card.definition,
-        type: 'definition',
-        originalId: card.id,
-        matched: false,
-      });
-    });
-
-    setCards(shuffleArray(matchCards));
-  }, [vocabulary]);
-
-  useEffect(() => {
-    if (!isComplete && cards.length > 0) {
+    if (!isComplete && pairs.length > 0) {
       const timer = setInterval(() => {
-        setTimeElapsed(prev => prev + 1);
+        setTimeElapsed((prev) => prev + 1);
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [isComplete, cards.length]);
+  }, [isComplete, pairs.length]);
 
   useEffect(() => {
-    if (matchedPairs.length === 15 && !isComplete) {
+    const matchedCount = pairs.filter((p) => p.matched).length;
+    if (matchedCount === pairs.length && pairs.length > 0 && !isComplete) {
       setIsComplete(true);
+      
+      // Update word progress
+      const newProgress = { ...wordProgress };
+      
+      pairs.forEach(pair => {
+        // Remove from unseen
+        newProgress.unseenWords = newProgress.unseenWords.filter(id => id !== pair.id);
+        
+        if (currentRoundErrors.has(pair.id)) {
+          // Had errors, add to incorrect if not already there
+          if (!newProgress.incorrectWords.includes(pair.id)) {
+            newProgress.incorrectWords.push(pair.id);
+          }
+          // Remove from correct if it was there
+          newProgress.correctWords = newProgress.correctWords.filter(id => id !== pair.id);
+        } else {
+          // No errors in this round
+          if (isReviewMode) {
+            // In review mode, move from incorrect to correct
+            newProgress.incorrectWords = newProgress.incorrectWords.filter(id => id !== pair.id);
+            if (!newProgress.correctWords.includes(pair.id)) {
+              newProgress.correctWords.push(pair.id);
+            }
+          } else {
+            // First time seeing, add to correct
+            if (!newProgress.correctWords.includes(pair.id)) {
+              newProgress.correctWords.push(pair.id);
+            }
+          }
+        }
+      });
+      
+      setWordProgress(newProgress);
+      
+      // Celebratory sound - ascending victory melody
+      setTimeout(() => playSound(523, 150), 0);
+      setTimeout(() => playSound(659, 150), 150);
+      setTimeout(() => playSound(784, 150), 300);
+      setTimeout(() => playSound(1047, 300), 450);
+      
       confetti({
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 },
         colors: ['#60A5FA', '#A78BFA', '#34D399'],
       });
-    }
-  }, [matchedPairs, isComplete]);
 
-  const handleCardClick = (card: MatchCard) => {
-    if (card.matched || selectedCards.find(c => c.id === card.id)) return;
-
-    const newSelected = [...selectedCards, card];
-    setSelectedCards(newSelected);
-
-    if (newSelected.length === 2) {
-      const [first, second] = newSelected;
-      
-      if (first.originalId === second.originalId && first.type !== second.type) {
-        // Match found!
-        setMatchedPairs([...matchedPairs, first.originalId]);
-        setCards(cards.map(c => 
-          c.originalId === first.originalId ? { ...c, matched: true } : c
-        ));
-        setScore(score + 100);
-        confetti({
-          particleCount: 30,
-          spread: 50,
-          origin: { y: 0.7 },
-          colors: ['#34D399'],
-        });
-        setSelectedCards([]);
-      } else {
-        // No match
-        setTimeout(() => {
-          setSelectedCards([]);
-        }, 1000);
+      // Check if there are more words to learn (don't auto-advance if all complete)
+      const hasMoreWords = newProgress.unseenWords.length > 0 || newProgress.incorrectWords.length > 0;
+      if (hasMoreWords) {
+        // Start countdown for auto-advance
+        setAutoAdvanceCountdown(3);
       }
     }
+  }, [pairs, isComplete, currentRoundErrors, wordProgress, isReviewMode]);
+
+  // Auto-advance countdown timer
+  useEffect(() => {
+    if (autoAdvanceCountdown !== null && autoAdvanceCountdown > 0) {
+      const timer = setTimeout(() => {
+        setAutoAdvanceCountdown(autoAdvanceCountdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (autoAdvanceCountdown === 0) {
+      // Countdown finished, advance to next round
+      handleNextRound();
+      setAutoAdvanceCountdown(null);
+    }
+  }, [autoAdvanceCountdown]);
+
+  // Sound effects using Web Audio API
+  const playSound = (frequency: number, duration: number = 100) => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = frequency;
+      oscillator.type = 'sine';
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.01,
+        audioContext.currentTime + duration / 1000
+      );
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + duration / 1000);
+    } catch (e) {
+      // Silently fail if audio context not available
+    }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+    setOverId(null);
+
+    if (!over) return;
+
+    const draggedTermId = active.id as string;
+    const droppedDefId = over.id as string;
+
+    // Check if it's a correct match
+    if (draggedTermId === droppedDefId) {
+      // Correct match!
+      setPairs((prev) =>
+        prev.map((pair) =>
+          pair.id === draggedTermId ? { ...pair, matched: true } : pair
+        )
+      );
+      setScore((prev) => prev + 100);
+
+      // Success sound and confetti
+      playSound(600, 150);
+      confetti({
+        particleCount: 30,
+        spread: 50,
+        origin: { y: 0.7 },
+        colors: ['#34D399', '#60A5FA'],
+      });
+    } else {
+      // Wrong match - track this error
+      setCurrentRoundErrors(prev => new Set([...Array.from(prev), draggedTermId]));
+      playSound(200, 100);
+    }
+  };
+
+  const handleDragOver = (event: any) => {
+    setOverId(event.over?.id || null);
   };
 
   const formatTime = (seconds: number) => {
@@ -127,24 +424,68 @@ export default function MatchPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progress = (matchedPairs.length / 15) * 100;
+  const handleNextRound = () => {
+    setIsComplete(false);
+    setActiveId(null);
+    setOverId(null);
+    setPairs([]);
+    initializeRound();
+  };
+
+  const handleResetProgress = () => {
+    if (vocabulary && vocabulary.length > 0) {
+      const storageKey = `match-progress-${gameCode}`;
+      localStorage.removeItem(storageKey);
+      setWordProgress({
+        unseenWords: vocabulary.map(v => v.id),
+        correctWords: [],
+        incorrectWords: [],
+      });
+      setIsComplete(false);
+      setScore(0);
+      setTimeElapsed(0);
+      setActiveId(null);
+      setOverId(null);
+      setPairs([]);
+      setAllWordsCompleted(false);
+      setIsReviewMode(false);
+    }
+  };
+
+  const matchedCount = pairs.filter((p) => p.matched).length;
+  const progress = pairs.length > 0 ? (matchedCount / pairs.length) * 100 : 0;
+  const activePair = pairs.find((p) => p.id === activeId);
+
+  const totalWords = vocabulary?.length || 0;
+  const wordsCompleted = wordProgress.correctWords.length + wordProgress.incorrectWords.length;
+  const overallProgress = totalWords > 0 ? (wordsCompleted / totalWords) * 100 : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <Button variant="ghost" onClick={() => router.push(`/lobby/${gameCode}`)}>
+        <div className="flex items-center justify-between mb-6">
+          <Button variant="ghost" onClick={() => router.push(`/game/${gameCode}`)}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Lobby
           </Button>
-          
+
           <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetProgress}
+              title="Reset all progress and start fresh"
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Reset Progress
+            </Button>
+
             <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-2">
               <Timer className="h-5 w-5 text-primary" />
               <span className="font-bold text-primary">{formatTime(timeElapsed)}</span>
             </div>
-            
+
             <div className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-full px-4 py-2">
               <Trophy className="h-5 w-5 text-secondary" />
               <span className="font-bold text-secondary">{score}</span>
@@ -152,84 +493,244 @@ export default function MatchPage() {
           </div>
         </div>
 
-        {/* Progress */}
-        <div className="max-w-6xl mx-auto mb-8">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-muted-foreground">
-              {matchedPairs.length} of 15 pairs matched
-            </span>
-            <span className="text-sm text-muted-foreground">
-              {Math.round(progress)}% Complete
-            </span>
-          </div>
-          <Progress value={progress} className="h-2" />
+        {/* Overall Progress Card */}
+        <div className="max-w-6xl mx-auto mb-6">
+          <Card className={isReviewMode ? "bg-orange-500/10 border-orange-500/30" : "bg-primary/5 border-primary/20"}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-primary" />
+                  <span className="font-semibold">Overall Progress</span>
+                  {isReviewMode && (
+                    <Badge className="bg-orange-500 hover:bg-orange-600">
+                      Review Mode
+                    </Badge>
+                  )}
+                </div>
+                <span className="text-sm text-muted-foreground">
+                  {wordsCompleted} / {totalWords} words completed
+                </span>
+              </div>
+              <Progress value={overallProgress} className="h-2 mb-3" />
+              <div className="grid grid-cols-3 gap-4 text-center text-sm">
+                <div>
+                  <div className="flex items-center justify-center gap-1 text-green-600 font-semibold">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {wordProgress.correctWords.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Mastered</div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-center gap-1 text-orange-600 font-semibold">
+                    <XCircle className="h-4 w-4" />
+                    {wordProgress.incorrectWords.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Need Review</div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-center gap-1 text-blue-600 font-semibold">
+                    <BookOpen className="h-4 w-4" />
+                    {wordProgress.unseenWords.length}
+                  </div>
+                  <div className="text-xs text-muted-foreground">Remaining</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Game Grid */}
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-6 gap-3">
-            <AnimatePresence>
-              {cards.map((card) => (
-                <motion.div
-                  key={card.id}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  layout
-                >
-                  <Card
-                    className={`
-                      cursor-pointer transition-all duration-300 hover:scale-105
-                      ${card.matched ? 'opacity-50 border-green-500 bg-green-500/10' : ''}
-                      ${selectedCards.find(c => c.id === card.id) ? 'border-primary bg-primary/20 scale-105' : 'border-border'}
-                      ${card.type === 'term' ? 'bg-blue-500/5' : 'bg-purple-500/5'}
-                    `}
-                    onClick={() => handleCardClick(card)}
+        {/* Current Round Progress */}
+        {!allWordsCompleted && pairs.length > 0 && (
+          <div className="max-w-6xl mx-auto mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-muted-foreground">
+                Current Round: {matchedCount} of {pairs.length} pairs matched
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {Math.round(progress)}% Complete
+              </span>
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
+        )}
+
+        {/* Instructions */}
+        {!allWordsCompleted && pairs.length > 0 && (
+          <div className="max-w-6xl mx-auto mb-6">
+            <Card className="bg-primary/5 border-primary/20">
+              <CardContent className="pt-6 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Drag the <span className="text-blue-500 font-semibold">terms</span> from the top and drop them on their matching{' '}
+                  <span className="text-purple-500 font-semibold">Danish translations</span> below
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* All Words Completed Message */}
+        {allWordsCompleted && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-6xl mx-auto"
+          >
+            <Card className="border-primary/50 bg-gradient-to-br from-primary/10 to-accent/10">
+              <CardContent className="pt-6 text-center">
+                <Trophy className="h-20 w-20 text-primary mx-auto mb-4" />
+                <h2 className="text-4xl font-heading font-bold mb-2">🎉 Congratulations!</h2>
+                <p className="text-xl text-muted-foreground mb-4">
+                  You've mastered all {totalWords} words!
+                </p>
+                <div className="bg-muted/50 rounded-lg p-4 mb-6 max-w-md mx-auto">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <div className="text-2xl font-bold text-green-600">{wordProgress.correctWords.length}</div>
+                      <div className="text-muted-foreground">Words Mastered</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-primary">{formatTime(timeElapsed)}</div>
+                      <div className="text-muted-foreground">Total Time</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-4 justify-center">
+                  <Button onClick={handleResetProgress} size="lg">
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Start Over
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={() => router.push(`/game/${gameCode}`)}
                   >
-                    <CardContent className="p-6 min-h-[120px] flex flex-col items-center justify-center">
-                      <Badge variant="secondary" className="mb-3 text-xs">
-                        {card.type === 'term' ? 'Term' : 'Definition'}
-                      </Badge>
-                      <p className="text-center font-medium text-sm">
-                        {card.content}
-                      </p>
+                    Back to Lobby
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* Game Area */}
+        {!allWordsCompleted && pairs.length > 0 && (
+          <div className="max-w-6xl mx-auto">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragOver={handleDragOver}
+            >
+              {/* Terms (Draggable) */}
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold mb-3 text-center text-blue-500">
+                  Terms (Drag these)
+                </h3>
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  <AnimatePresence>
+                    {pairs.map((pair) => (
+                      <DraggableCard
+                        key={`term-${pair.id}`}
+                        id={pair.id}
+                        content={pair.term}
+                        disabled={pair.matched}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* Definitions (Droppable) - Shuffled separately */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3 text-center text-purple-500">
+                  Danish Translations (Drop here)
+                </h3>
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  <AnimatePresence>
+                    {shuffledDefinitions.map((pair) => (
+                      <DroppableCard
+                        key={`def-${pair.id}`}
+                        id={pair.id}
+                        content={pair.definition}
+                        isOver={overId === pair.id}
+                        disabled={pair.matched}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* Drag Overlay */}
+              <DragOverlay>
+                {activeId && activePair ? (
+                  <Card className="cursor-grabbing shadow-2xl bg-blue-500/20 border-blue-500">
+                    <CardContent className="p-4 min-h-[100px] flex flex-col items-center justify-center">
+                      <Badge className="mb-2 text-xs bg-blue-500 text-white">Term</Badge>
+                      <p className="text-center font-medium text-sm">{activePair.term}</p>
                     </CardContent>
                   </Card>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
 
-          {/* Completion Message */}
-          {isComplete && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-8"
-            >
-              <Card className="border-primary/50 bg-gradient-to-br from-primary/10 to-accent/10">
-                <CardContent className="pt-6 text-center">
-                  <Trophy className="h-16 w-16 text-primary mx-auto mb-4" />
-                  <h2 className="text-3xl font-heading font-bold mb-2">
-                    Perfect Match!
-                  </h2>
-                  <p className="text-muted-foreground mb-4">
-                    You completed all matches in {formatTime(timeElapsed)}
-                  </p>
-                  <div className="flex gap-4 justify-center">
-                    <Button onClick={() => window.location.reload()}>
-                      <Zap className="mr-2 h-4 w-4" />
-                      Play Again
-                    </Button>
-                    <Button variant="outline" onClick={() => router.push(`/lobby/${gameCode}`)}>
-                      Back to Lobby
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-        </div>
+            {/* Round Completion Message */}
+            {isComplete && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-8"
+              >
+                <Card className="border-primary/50 bg-gradient-to-br from-primary/10 to-accent/10">
+                  <CardContent className="pt-6 text-center">
+                    <Trophy className="h-16 w-16 text-primary mx-auto mb-4" />
+                    <h2 className="text-3xl font-heading font-bold mb-2">Round Complete!</h2>
+                    <p className="text-muted-foreground mb-4">
+                      You completed this round in {formatTime(timeElapsed)}
+                    </p>
+                    {wordProgress.unseenWords.length === 0 && wordProgress.incorrectWords.length === 0 ? (
+                      <p className="text-lg font-semibold text-green-600 mb-4">
+                        🎉 All words mastered! Great job!
+                      </p>
+                    ) : wordProgress.unseenWords.length === 0 && wordProgress.incorrectWords.length > 0 ? (
+                      <p className="text-lg font-semibold text-orange-600 mb-4">
+                        📚 You've seen all words! Now reviewing {wordProgress.incorrectWords.length} words that need practice.
+                      </p>
+                    ) : (
+                      <p className="text-lg font-semibold text-blue-600 mb-4">
+                        📖 {wordProgress.unseenWords.length} words remaining to learn
+                      </p>
+                    )}
+                    {autoAdvanceCountdown !== null && (
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Next round starting in {autoAdvanceCountdown}...
+                      </p>
+                    )}
+                    <div className="flex gap-4 justify-center">
+                      <Button 
+                        onClick={() => {
+                          setAutoAdvanceCountdown(null);
+                          handleNextRound();
+                        }} 
+                        size="lg"
+                      >
+                        <Zap className="mr-2 h-4 w-4" />
+                        {autoAdvanceCountdown !== null ? 'Start Now' : 'Next Round'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        onClick={() => router.push(`/game/${gameCode}`)}
+                      >
+                        Back to Lobby
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

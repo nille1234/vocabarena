@@ -242,6 +242,169 @@ export async function deleteVocabularyList(listId: string): Promise<{ success: b
   }
 }
 
+// Vocabulary Card Management
+
+export async function addVocabularyCard(
+  listId: string,
+  card: {
+    term: string;
+    definition: string;
+    germanTerm?: string;
+  }
+): Promise<{ success: boolean; cardId?: string; error?: string }> {
+  const supabase = createClient();
+  if (!supabase) {
+    return { success: false, error: 'Supabase client not initialized' };
+  }
+
+  try {
+    // Get the current max order_index for this list
+    const { data: maxCard, error: maxError } = await supabase
+      .from('vocabulary_cards')
+      .select('order_index')
+      .eq('list_id', listId)
+      .order('order_index', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (maxError) throw maxError;
+
+    const nextOrderIndex = maxCard ? maxCard.order_index + 1 : 0;
+
+    // Insert the new card
+    const { data, error } = await supabase
+      .from('vocabulary_cards')
+      .insert({
+        list_id: listId,
+        term: card.term,
+        definition: card.definition,
+        german_term: card.germanTerm,
+        order_index: nextOrderIndex,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return { success: true, cardId: data.id };
+  } catch (error) {
+    console.error('Error adding vocabulary card:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function updateVocabularyCard(
+  cardId: string,
+  updates: {
+    term?: string;
+    definition?: string;
+    germanTerm?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = createClient();
+  if (!supabase) {
+    return { success: false, error: 'Supabase client not initialized' };
+  }
+
+  try {
+    const updateData: any = {};
+    if (updates.term !== undefined) updateData.term = updates.term;
+    if (updates.definition !== undefined) updateData.definition = updates.definition;
+    if (updates.germanTerm !== undefined) updateData.german_term = updates.germanTerm;
+
+    const { error } = await supabase
+      .from('vocabulary_cards')
+      .update(updateData)
+      .eq('id', cardId);
+
+    if (error) throw error;
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating vocabulary card:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function deleteVocabularyCard(
+  cardId: string,
+  listId: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = createClient();
+  if (!supabase) {
+    return { success: false, error: 'Supabase client not initialized' };
+  }
+
+  try {
+    // Check if deleting this card would leave less than 20 words
+    const { data: cards, error: countError } = await supabase
+      .from('vocabulary_cards')
+      .select('id')
+      .eq('list_id', listId);
+
+    if (countError) throw countError;
+
+    if (cards && cards.length <= 20) {
+      return {
+        success: false,
+        error: 'Cannot delete card. Vocabulary lists must have at least 20 words.',
+      };
+    }
+
+    // Delete the card
+    const { error } = await supabase
+      .from('vocabulary_cards')
+      .delete()
+      .eq('id', cardId);
+
+    if (error) throw error;
+
+    // Reorder remaining cards
+    await reorderVocabularyCards(listId);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting vocabulary card:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function reorderVocabularyCards(listId: string): Promise<void> {
+  const supabase = createClient();
+  if (!supabase) return;
+
+  try {
+    // Get all cards for this list ordered by current order_index
+    const { data: cards, error: fetchError } = await supabase
+      .from('vocabulary_cards')
+      .select('id')
+      .eq('list_id', listId)
+      .order('order_index', { ascending: true });
+
+    if (fetchError) throw fetchError;
+    if (!cards) return;
+
+    // Update each card with its new order_index
+    for (let i = 0; i < cards.length; i++) {
+      await supabase
+        .from('vocabulary_cards')
+        .update({ order_index: i })
+        .eq('id', cards[i].id);
+    }
+  } catch (error) {
+    console.error('Error reordering vocabulary cards:', error);
+  }
+}
+
 // Game Links
 
 export async function createGameLink(
@@ -249,7 +412,11 @@ export async function createGameLink(
   code: string,
   listId: string,
   enabledGames: GameMode[],
-  crosswordWordCount?: number
+  crosswordWordCount?: number,
+  othelloAnswerMode?: 'text-input' | 'multiple-choice',
+  ticTacToeAnswerMode?: 'text-input' | 'multiple-choice',
+  wordSearchWordCount?: number,
+  wordSearchShowList?: boolean
 ): Promise<{ success: boolean; linkId?: string; error?: string }> {
   const supabase = createClient();
   if (!supabase) {
@@ -271,6 +438,10 @@ export async function createGameLink(
         list_id: listId,
         enabled_games: enabledGames,
         crossword_word_count: crosswordWordCount,
+        word_search_word_count: wordSearchWordCount,
+        word_search_show_list: wordSearchShowList !== undefined ? wordSearchShowList : true,
+        othello_answer_mode: othelloAnswerMode || 'text-input',
+        tic_tac_toe_answer_mode: ticTacToeAnswerMode || 'text-input',
         is_active: true,
         user_id: user.id,
       })
@@ -325,6 +496,11 @@ export async function getAllGameLinks(): Promise<GameLink[]> {
         updatedAt: new Date(link.vocabulary_lists.updated_at),
       } : undefined,
       enabledGames: link.enabled_games as GameMode[],
+      crosswordWordCount: link.crossword_word_count,
+      wordSearchWordCount: link.word_search_word_count,
+      wordSearchShowList: link.word_search_show_list,
+      othelloAnswerMode: link.othello_answer_mode,
+      ticTacToeAnswerMode: link.tic_tac_toe_answer_mode,
       createdAt: new Date(link.created_at),
       expiresAt: link.expires_at ? new Date(link.expires_at) : undefined,
       isActive: link.is_active,
@@ -391,6 +567,10 @@ export async function getGameLinkByCode(code: string): Promise<GameLink | null> 
       vocabularyList,
       enabledGames: link.enabled_games as GameMode[],
       crosswordWordCount: link.crossword_word_count,
+      wordSearchWordCount: link.word_search_word_count,
+      wordSearchShowList: link.word_search_show_list,
+      othelloAnswerMode: link.othello_answer_mode,
+      ticTacToeAnswerMode: link.tic_tac_toe_answer_mode,
       createdAt: new Date(link.created_at),
       expiresAt: link.expires_at ? new Date(link.expires_at) : undefined,
       isActive: link.is_active,
@@ -408,6 +588,11 @@ export async function updateGameLink(
     enabledGames?: GameMode[];
     isActive?: boolean;
     expiresAt?: Date | null;
+    crosswordWordCount?: number;
+    wordSearchWordCount?: number;
+    wordSearchShowList?: boolean;
+    othelloAnswerMode?: 'text-input' | 'multiple-choice';
+    ticTacToeAnswerMode?: 'text-input' | 'multiple-choice';
   }
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = createClient();
@@ -421,6 +606,11 @@ export async function updateGameLink(
     if (updates.enabledGames !== undefined) updateData.enabled_games = updates.enabledGames;
     if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
     if (updates.expiresAt !== undefined) updateData.expires_at = updates.expiresAt;
+    if (updates.crosswordWordCount !== undefined) updateData.crossword_word_count = updates.crosswordWordCount;
+    if (updates.wordSearchWordCount !== undefined) updateData.word_search_word_count = updates.wordSearchWordCount;
+    if (updates.wordSearchShowList !== undefined) updateData.word_search_show_list = updates.wordSearchShowList;
+    if (updates.othelloAnswerMode !== undefined) updateData.othello_answer_mode = updates.othelloAnswerMode;
+    if (updates.ticTacToeAnswerMode !== undefined) updateData.tic_tac_toe_answer_mode = updates.ticTacToeAnswerMode;
 
     const { error } = await supabase
       .from('game_links')

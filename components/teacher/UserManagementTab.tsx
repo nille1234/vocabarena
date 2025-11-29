@@ -11,18 +11,34 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { UserProfile } from "@/lib/supabase/userManagement";
-import { UserPlus, Shield, User, CheckCircle, AlertCircle, Mail, Clock } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { UserProfile, deleteUser } from "@/lib/supabase/userManagement";
+import { UserPlus, Shield, User, CheckCircle, AlertCircle, Mail, Clock, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
 
 interface UserManagementTabProps {
   users: UserProfile[];
   currentUserId: string;
   onInviteTeacher: () => void;
+  onUserDeleted?: () => void;
 }
 
-export function UserManagementTab({ users, currentUserId, onInviteTeacher }: UserManagementTabProps) {
+export function UserManagementTab({ users, currentUserId, onInviteTeacher, onUserDeleted }: UserManagementTabProps) {
+  const { toast } = useToast();
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // Separate users into active and pending
   const { activeUsers, pendingInvites } = useMemo(() => {
     const active: UserProfile[] = [];
@@ -39,6 +55,43 @@ export function UserManagementTab({ users, currentUserId, onInviteTeacher }: Use
     
     return { activeUsers: active, pendingInvites: pending };
   }, [users]);
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await deleteUser(userToDelete.id);
+      
+      if (result.success) {
+        toast({
+          title: "User deleted",
+          description: `${userToDelete.email} has been removed from the system.`,
+        });
+        setUserToDelete(null);
+        onUserDeleted?.();
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to delete user",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const isPendingInvite = (user: UserProfile) => {
+    return !user.lastSignInAt || user.passwordChangeRequired;
+  };
+
   if (users.length === 0) {
     return (
       <div className="text-center py-12">
@@ -65,12 +118,13 @@ export function UserManagementTab({ users, currentUserId, onInviteTeacher }: Use
             <TableHead>Status</TableHead>
             <TableHead>Created</TableHead>
             <TableHead>Last Sign In</TableHead>
+            <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {userList.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                 {showInviteStatus ? 'No pending invitations' : 'No active users'}
               </TableCell>
             </TableRow>
@@ -130,6 +184,21 @@ export function UserManagementTab({ users, currentUserId, onInviteTeacher }: Use
                     <span className="text-orange-600 font-medium">Never</span>
                   )}
                 </TableCell>
+                <TableCell>
+                  {user.id !== currentUserId && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setUserToDelete(user)}
+                      className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">
+                        {isPendingInvite(user) ? 'Cancel invite' : 'Delete user'}
+                      </span>
+                    </Button>
+                  )}
+                </TableCell>
               </TableRow>
             ))
           )}
@@ -139,45 +208,92 @@ export function UserManagementTab({ users, currentUserId, onInviteTeacher }: Use
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-end">
-        <Button onClick={onInviteTeacher}>
-          <UserPlus className="mr-2 h-4 w-4" />
-          Invite Teacher
-        </Button>
+    <>
+      <div className="space-y-4">
+        <div className="flex items-center justify-end">
+          <Button onClick={onInviteTeacher}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            Invite Teacher
+          </Button>
+        </div>
+
+        <Tabs defaultValue="all" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="all">
+              All Users ({users.length})
+            </TabsTrigger>
+            <TabsTrigger value="active">
+              Active ({activeUsers.length})
+            </TabsTrigger>
+            <TabsTrigger value="pending">
+              Pending Invites ({pendingInvites.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="all" className="space-y-4">
+            {renderUserTable(users)}
+          </TabsContent>
+
+          <TabsContent value="active" className="space-y-4">
+            <div className="text-sm text-muted-foreground mb-2">
+              Users who have logged in and completed setup
+            </div>
+            {renderUserTable(activeUsers)}
+          </TabsContent>
+
+          <TabsContent value="pending" className="space-y-4">
+            <div className="text-sm text-muted-foreground mb-2">
+              Invited users who haven't logged in yet or need to change their password
+            </div>
+            {renderUserTable(pendingInvites, true)}
+          </TabsContent>
+        </Tabs>
       </div>
 
-      <Tabs defaultValue="all" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="all">
-            All Users ({users.length})
-          </TabsTrigger>
-          <TabsTrigger value="active">
-            Active ({activeUsers.length})
-          </TabsTrigger>
-          <TabsTrigger value="pending">
-            Pending Invites ({pendingInvites.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="all" className="space-y-4">
-          {renderUserTable(users)}
-        </TabsContent>
-
-        <TabsContent value="active" className="space-y-4">
-          <div className="text-sm text-muted-foreground mb-2">
-            Users who have logged in and completed setup
-          </div>
-          {renderUserTable(activeUsers)}
-        </TabsContent>
-
-        <TabsContent value="pending" className="space-y-4">
-          <div className="text-sm text-muted-foreground mb-2">
-            Invited users who haven't logged in yet or need to change their password
-          </div>
-          {renderUserTable(pendingInvites, true)}
-        </TabsContent>
-      </Tabs>
-    </div>
+      <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {userToDelete && isPendingInvite(userToDelete) 
+                ? 'Cancel Invitation' 
+                : 'Delete User'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {userToDelete && isPendingInvite(userToDelete) ? (
+                <>
+                  Are you sure you want to cancel the invitation for{' '}
+                  <span className="font-semibold">{userToDelete.email}</span>?
+                  <br /><br />
+                  This will remove the pending invitation and the user will not be able to access the system.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete{' '}
+                  <span className="font-semibold">{userToDelete?.email}</span>?
+                  <br /><br />
+                  <span className="text-destructive font-semibold">This action cannot be undone.</span>
+                  {' '}This will permanently delete the user account and all associated data including:
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>Vocabulary lists</li>
+                    <li>Game links</li>
+                    <li>All other user data</li>
+                  </ul>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteUser}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : (userToDelete && isPendingInvite(userToDelete) ? 'Cancel Invite' : 'Delete User')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

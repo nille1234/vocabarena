@@ -4,10 +4,14 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, RotateCcw, Trophy, X as XIcon, Circle } from "lucide-react";
+import { ArrowLeft, RotateCcw, Trophy } from "lucide-react";
 import { useGameStore } from "@/lib/store/gameStore";
+import { checkGameAccessClient } from "@/lib/supabase/gameAccess.client";
+import { generateMultipleChoiceOptions } from "@/lib/utils/wordClassifier";
+import { TicTacToeBoard } from "@/components/game/tic-tac-toe/TicTacToeBoard";
+import { TicTacToePlayerCard } from "@/components/game/tic-tac-toe/TicTacToePlayerCard";
+import { OthelloPrompt } from "@/components/game/othello/OthelloPrompt";
 import confetti from "canvas-confetti";
 
 type CellState = "empty" | "X" | "O";
@@ -23,6 +27,7 @@ interface GridCell {
 interface TranslationPrompt {
   word: string;
   correctAnswer: string;
+  choices?: string[];
 }
 
 const BOARD_SIZE = 10;
@@ -31,23 +36,39 @@ export default function TicTacToeGamePage() {
   const params = useParams();
   const router = useRouter();
   const { session } = useGameStore();
+  const gameCode = params.code as string;
 
+  const [gameMode, setGameMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [loading, setLoading] = useState(true);
   const [board, setBoard] = useState<GridCell[][]>([]);
   const [currentPlayer, setCurrentPlayer] = useState<"X" | "O">("X");
   const [showPrompt, setShowPrompt] = useState(false);
   const [currentPrompt, setCurrentPrompt] = useState<TranslationPrompt | null>(null);
   const [userAnswer, setUserAnswer] = useState("");
+  const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<{ row: number; col: number } | null>(null);
   const [feedback, setFeedback] = useState<"correct" | "incorrect" | null>(null);
   const [gameOver, setGameOver] = useState(false);
   const [winner, setWinner] = useState<"X" | "O" | "draw" | null>(null);
   const [winningLine, setWinningLine] = useState<string[]>([]);
 
+  // Fetch game mode setting from teacher
   useEffect(() => {
-    if (session?.cards) {
+    async function fetchGameMode() {
+      const result = await checkGameAccessClient(gameCode);
+      if (result.gameLink?.ticTacToeAnswerMode) {
+        setGameMode(result.gameLink.ticTacToeAnswerMode);
+      }
+      setLoading(false);
+    }
+    fetchGameMode();
+  }, [gameCode]);
+
+  useEffect(() => {
+    if (session?.cards && !loading) {
       initializeBoard();
     }
-  }, [session]);
+  }, [session, loading]);
 
   const initializeBoard = () => {
     if (!session?.cards) return;
@@ -80,20 +101,96 @@ export default function TicTacToeGamePage() {
     if (board[row][col].state !== "empty" || showPrompt || gameOver) return;
 
     const cell = board[row][col];
-    setCurrentPrompt({
-      word: cell.word,
-      correctAnswer: cell.translation.toLowerCase().trim(),
-    });
+    const parts = cell.word.split(/\s*–\s*/);
+    
+    let wordToTranslate = '';
+    let acceptableAnswers = '';
+    
+    if (parts.length >= 2) {
+      const englishPart = parts[0].trim();
+      const englishWords = englishPart.split(/[,\s]+/);
+      wordToTranslate = englishWords[0];
+      acceptableAnswers = parts.slice(1).join(',').trim();
+    } else {
+      const termWords = cell.word.split(/\s+/);
+      wordToTranslate = termWords[0];
+      acceptableAnswers = termWords.slice(1).join(' ');
+    }
+    
+    const allAnswers = [acceptableAnswers, cell.translation]
+      .filter(s => s && s.trim().length > 0)
+      .join(',');
+    
+    const prompt: TranslationPrompt = {
+      word: wordToTranslate,
+      correctAnswer: allAnswers.toLowerCase().trim(),
+    };
+    
+    if (gameMode === "multiple-choice" && session?.cards) {
+      // Split by commas/semicolons to get complete translation phrases
+      const translationOptions = allAnswers.split(/[,;]+/).map(s => s.trim()).filter(s => s.length > 0);
+      const correctChoice = translationOptions[0]; // Use first complete phrase (e.g., "at spise" not just "at")
+      
+      // Get all possible Danish answers from all cards as complete phrases
+      const allDanishPhrases = session.cards.flatMap((card: any) => {
+        const cardParts = card.term.split(/\s*–\s*/);
+        if (cardParts.length >= 2) {
+          const danishPart = cardParts.slice(1).join(',').trim();
+          // Split by commas to get complete phrases, not individual words
+          return danishPart.split(/[,;]+/).map((phrase: string) => phrase.trim()).filter((p: string) => p.length > 0);
+        }
+        const words = card.term.split(/\s+/);
+        if (words.length > 1) {
+          return [words.slice(1).join(' ')];
+        }
+        // Split definition by commas to get complete phrases
+        return card.definition.split(/[,;]+/).map((phrase: string) => phrase.trim()).filter((p: string) => p.length > 0);
+      });
+      
+      // Filter out the correct answer from wrong options pool
+      const wrongOptions = allDanishPhrases.filter(phrase => 
+        phrase.toLowerCase() !== correctChoice.toLowerCase()
+      );
+      
+      // Generate 4 choices (1 correct + 3 wrong) using word classifier
+      const allChoices = generateMultipleChoiceOptions(correctChoice, wrongOptions, 4);
+      
+      // Shuffle using Fisher-Yates to randomize position
+      for (let i = allChoices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allChoices[i], allChoices[j]] = [allChoices[j], allChoices[i]];
+      }
+      
+      prompt.choices = allChoices;
+      // Store the correct choice for validation
+      prompt.correctAnswer = correctChoice.toLowerCase().trim();
+    }
+    
+    setCurrentPrompt(prompt);
     setPendingMove({ row, col });
     setShowPrompt(true);
     setUserAnswer("");
+    setSelectedChoice(null);
     setFeedback(null);
   };
 
   const handleSubmitAnswer = () => {
     if (!currentPrompt || !pendingMove) return;
 
-    const isCorrect = userAnswer.toLowerCase().trim() === currentPrompt.correctAnswer;
+    let isCorrect = false;
+    
+    if (gameMode === "multiple-choice") {
+      // In multiple-choice mode, only accept the exact displayed choice
+      isCorrect = selectedChoice?.toLowerCase().trim() === currentPrompt.correctAnswer.toLowerCase().trim();
+    } else {
+      // In text-input mode, accept any of the correct variations
+      const correctWords = currentPrompt.correctAnswer
+        .split(/[\s,;]+/)
+        .filter(word => word.length > 0)
+        .map(word => word.toLowerCase());
+      const userAnswerLower = userAnswer.toLowerCase().trim();
+      isCorrect = correctWords.some(word => userAnswerLower === word);
+    }
 
     setFeedback(isCorrect ? "correct" : "incorrect");
 
@@ -101,7 +198,6 @@ export default function TicTacToeGamePage() {
       if (isCorrect) {
         makeMove(pendingMove.row, pendingMove.col);
       } else {
-        // Turn passes to other player
         setCurrentPlayer(currentPlayer === "X" ? "O" : "X");
       }
 
@@ -109,6 +205,7 @@ export default function TicTacToeGamePage() {
       setCurrentPrompt(null);
       setPendingMove(null);
       setUserAnswer("");
+      setSelectedChoice(null);
       setFeedback(null);
     }, 1500);
   };
@@ -118,7 +215,6 @@ export default function TicTacToeGamePage() {
     newBoard[row][col].state = currentPlayer;
     setBoard(newBoard);
 
-    // Check for win
     if (checkWin(newBoard, row, col, currentPlayer)) {
       setGameOver(true);
       setWinner(currentPlayer);
@@ -141,7 +237,6 @@ export default function TicTacToeGamePage() {
     col: number,
     player: "X" | "O"
   ): boolean => {
-    // Check all 4 directions: horizontal, vertical, diagonal-right, diagonal-left
     const directions = [
       [0, 1],   // horizontal
       [1, 0],   // vertical
@@ -153,7 +248,6 @@ export default function TicTacToeGamePage() {
       const line: string[] = [];
       let count = 1;
 
-      // Check forward
       let r = row + dx;
       let c = col + dy;
       while (
@@ -169,7 +263,6 @@ export default function TicTacToeGamePage() {
         c += dy;
       }
 
-      // Check backward
       r = row - dx;
       c = col - dy;
       while (
@@ -207,10 +300,17 @@ export default function TicTacToeGamePage() {
     setPendingMove(null);
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center">
+        <p className="text-muted-foreground">Loading game...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <Button variant="ghost" onClick={() => router.back()}>
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -225,76 +325,30 @@ export default function TicTacToeGamePage() {
           </Button>
         </div>
 
-        {/* Player Display */}
         <div className="max-w-4xl mx-auto mb-8">
           <div className="grid grid-cols-2 gap-4">
-            <Card className={currentPlayer === "X" ? "border-primary" : ""}>
-              <CardContent className="p-4 text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <XIcon className="h-6 w-6 text-primary" />
-                  <p className="text-sm font-medium">Player X</p>
-                </div>
-                {currentPlayer === "X" && !gameOver && (
-                  <p className="text-xs text-primary mt-1 font-bold">Current Turn</p>
-                )}
-              </CardContent>
-            </Card>
-            <Card className={currentPlayer === "O" ? "border-secondary" : ""}>
-              <CardContent className="p-4 text-center">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <Circle className="h-6 w-6 text-secondary" />
-                  <p className="text-sm font-medium">Player O</p>
-                </div>
-                {currentPlayer === "O" && !gameOver && (
-                  <p className="text-xs text-secondary mt-1 font-bold">Current Turn</p>
-                )}
-              </CardContent>
-            </Card>
+            <TicTacToePlayerCard
+              player="X"
+              isCurrentPlayer={currentPlayer === "X"}
+              gameOver={gameOver}
+            />
+            <TicTacToePlayerCard
+              player="O"
+              isCurrentPlayer={currentPlayer === "O"}
+              gameOver={gameOver}
+            />
           </div>
         </div>
 
-        {/* Game Board */}
         <div className="max-w-4xl mx-auto overflow-x-auto">
-          <div className="inline-block min-w-full">
-            <div className="grid grid-cols-10 gap-1 bg-border p-2 rounded-lg">
-              {board.map((row, rowIndex) =>
-                row.map((cell, colIndex) => {
-                  const isWinning = winningLine.includes(`${rowIndex}-${colIndex}`);
-                  return (
-                    <motion.div
-                      key={`${rowIndex}-${colIndex}`}
-                      whileHover={cell.state === "empty" && !gameOver ? { scale: 1.05 } : {}}
-                      whileTap={cell.state === "empty" && !gameOver ? { scale: 0.95 } : {}}
-                    >
-                      <div
-                        className={`
-                          aspect-square bg-card border-2 rounded cursor-pointer
-                          flex items-center justify-center
-                          transition-all duration-200
-                          ${cell.state === "empty" ? "hover:bg-muted" : ""}
-                          ${isWinning ? "ring-4 ring-yellow-400 animate-pulse" : ""}
-                          ${cell.state === "empty" ? "border-border" : ""}
-                          ${cell.state === "X" ? "border-primary" : ""}
-                          ${cell.state === "O" ? "border-secondary" : ""}
-                        `}
-                        onClick={() => handleCellClick(rowIndex, colIndex)}
-                      >
-                        {cell.state === "X" && (
-                          <XIcon className="h-6 w-6 md:h-8 md:w-8 text-primary" />
-                        )}
-                        {cell.state === "O" && (
-                          <Circle className="h-6 w-6 md:h-8 md:w-8 text-secondary" />
-                        )}
-                      </div>
-                    </motion.div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+          <TicTacToeBoard
+            board={board}
+            winningLine={winningLine}
+            gameOver={gameOver}
+            onCellClick={handleCellClick}
+          />
         </div>
 
-        {/* Instructions */}
         <div className="max-w-4xl mx-auto mt-8">
           <Card>
             <CardContent className="p-4 text-center">
@@ -306,71 +360,18 @@ export default function TicTacToeGamePage() {
           </Card>
         </div>
 
-        {/* Translation Prompt Modal */}
-        <AnimatePresence>
-          {showPrompt && currentPrompt && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50"
-            >
-              <motion.div
-                initial={{ scale: 0.9, y: 20 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.9, y: 20 }}
-                className="bg-card p-8 rounded-lg shadow-lg max-w-md mx-4 w-full"
-              >
-                <div className="space-y-4">
-                  <h2 className="text-2xl font-heading font-bold text-center">
-                    Translate to Danish
-                  </h2>
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-primary mb-4">
-                      {currentPrompt.word}
-                    </p>
-                  </div>
-                  <Input
-                    value={userAnswer}
-                    onChange={(e) => setUserAnswer(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSubmitAnswer()}
-                    placeholder="Type your answer..."
-                    className="text-lg"
-                    autoFocus
-                    disabled={feedback !== null}
-                  />
-                  {feedback && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={`text-center p-4 rounded-lg ${
-                        feedback === "correct"
-                          ? "bg-green-500/20 text-green-500"
-                          : "bg-red-500/20 text-red-500"
-                      }`}
-                    >
-                      <p className="font-bold">
-                        {feedback === "correct" ? "✓ Correct!" : "✗ Incorrect"}
-                      </p>
-                      {feedback === "incorrect" && (
-                        <p className="text-sm mt-1">
-                          Correct answer: {currentPrompt.correctAnswer}
-                        </p>
-                      )}
-                    </motion.div>
-                  )}
-                  {!feedback && (
-                    <Button onClick={handleSubmitAnswer} className="w-full">
-                      Check Answer
-                    </Button>
-                  )}
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <OthelloPrompt
+          show={showPrompt}
+          prompt={currentPrompt}
+          gameMode={gameMode}
+          userAnswer={userAnswer}
+          selectedChoice={selectedChoice}
+          feedback={feedback}
+          onAnswerChange={setUserAnswer}
+          onChoiceSelect={setSelectedChoice}
+          onSubmit={handleSubmitAnswer}
+        />
 
-        {/* Game Over Modal */}
         <AnimatePresence>
           {gameOver && (
             <motion.div
@@ -400,7 +401,7 @@ export default function TicTacToeGamePage() {
                   <div className="flex gap-4 justify-center pt-4">
                     <Button onClick={handleNewGame}>Play Again</Button>
                     <Button variant="outline" onClick={() => router.back()}>
-                      Exit
+                      Back to Games
                     </Button>
                   </div>
                 </div>

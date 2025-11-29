@@ -23,10 +23,10 @@ export function ScoreDisplay({
       {/* Score */}
       <Badge
         variant="secondary"
-        className="flex items-center gap-2 px-4 py-2 bg-primary/10 border-primary/20"
+        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300"
       >
-        <Trophy className="h-5 w-5 text-primary" />
-        <span className="font-bold text-primary">{score}</span>
+        <Trophy className="h-5 w-5 text-purple-600" />
+        <span className="font-bold text-gray-900">{score}</span>
       </Badge>
 
       {/* Streak */}

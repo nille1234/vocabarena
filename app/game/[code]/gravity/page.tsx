@@ -8,9 +8,10 @@ import { Slider } from "@/components/ui/slider";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Trophy, Heart, Zap, Settings, Rocket, Flame } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { shuffleArray } from "@/lib/utils/gameLogic";
+import { shuffleArray } from "@/lib/utils/vocabularyShuffle";
 import confetti from "canvas-confetti";
 import { useGameVocabulary } from "@/hooks/use-game-vocabulary";
+import { getFirstDefinition } from "@/lib/utils/definitionParser";
 
 type FallingWord = {
   id: string;
@@ -44,8 +45,16 @@ export default function GravityPage() {
   const [combo, setCombo] = useState(0);
   const [wordsDestroyed, setWordsDestroyed] = useState(0);
   const [gameOver, setGameOver] = useState(false);
-  const [baseSpeed, setBaseSpeed] = useState(0.8);
-  const [vocabulary] = useState(() => vocabularyData && Array.isArray(vocabularyData) ? shuffleArray(vocabularyData) : []);
+  const [baseSpeed, setBaseSpeed] = useState(0.08);
+  const [shuffledVocabulary, setShuffledVocabulary] = useState<any[]>([]);
+  const [vocabularyIndex, setVocabularyIndex] = useState(0);
+
+  // Shuffle vocabulary on load
+  useEffect(() => {
+    if (vocabularyData && Array.isArray(vocabularyData) && vocabularyData.length > 0 && shuffledVocabulary.length === 0) {
+      setShuffledVocabulary(shuffleArray(vocabularyData));
+    }
+  }, [vocabularyData, shuffledVocabulary.length]);
 
   // Show loading state while redirecting
   if (!vocabularyData || !Array.isArray(vocabularyData) || vocabularyData.length === 0) {
@@ -80,14 +89,17 @@ export default function GravityPage() {
 
     // Spawn new words
     const spawnInterval = setInterval(() => {
-      if (words.length < 6) {
-        const randomWord = vocabulary[Math.floor(Math.random() * vocabulary.length)];
+      if (words.length < 6 && shuffledVocabulary.length > 0) {
+        // Use sequential words from shuffled vocabulary
+        const wordData = shuffledVocabulary[vocabularyIndex % shuffledVocabulary.length];
+        setVocabularyIndex(prev => prev + 1);
+        
         const newWord: FallingWord = {
-          id: `${randomWord.id}-${Date.now()}-${Math.random()}`,
-          term: randomWord.term,
-          definition: randomWord.definition,
+          id: `${wordData.id}-${Date.now()}-${Math.random()}`,
+          term: getFirstDefinition(wordData.term),
+          definition: wordData.definition,
           y: -10,
-          speed: baseSpeed + (Math.random() * 0.3),
+          speed: baseSpeed + (Math.random() * 0.05),
           lane: Math.floor(Math.random() * 3), // 3 lanes
         };
         setWords(prev => [...prev, newWord]);
@@ -95,7 +107,7 @@ export default function GravityPage() {
     }, 2500);
 
     return () => clearInterval(spawnInterval);
-  }, [words.length, gameStarted, gameOver, lives, vocabulary, baseSpeed]);
+  }, [words.length, gameStarted, gameOver, lives, shuffledVocabulary, vocabularyIndex, baseSpeed]);
 
   useEffect(() => {
     if (!gameStarted || gameOver || lives <= 0) return;
@@ -135,9 +147,17 @@ export default function GravityPage() {
     if (!currentInput.trim()) return;
 
     const input = currentInput.toLowerCase().trim();
-    const matchedWord = words.find(w => 
-      w.term.toLowerCase() === input
-    );
+    
+    // Check if input matches any of the acceptable Danish translations
+    const matchedWord = words.find(w => {
+      // Split definition by common separators to get all acceptable answers
+      const acceptableAnswers = w.definition
+        .split(/[,;]+/)
+        .map(ans => ans.trim().toLowerCase())
+        .filter(ans => ans.length > 0);
+      
+      return acceptableAnswers.some(answer => answer === input);
+    });
 
     if (matchedWord) {
       // Correct answer!
@@ -182,6 +202,11 @@ export default function GravityPage() {
     setGameOver(false);
     setGameStarted(false);
     setCurrentInput("");
+    setVocabularyIndex(0);
+    // Reshuffle vocabulary for new game
+    if (vocabularyData && Array.isArray(vocabularyData)) {
+      setShuffledVocabulary(shuffleArray(vocabularyData));
+    }
   };
 
   const startGame = () => {
@@ -192,15 +217,24 @@ export default function GravityPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 overflow-hidden">
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-4">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <Button variant="ghost" onClick={() => router.push(`/lobby/${gameCode}`)}>
+        <div className="flex items-center justify-between mb-4">
+          <Button variant="ghost" onClick={() => router.push(`/game/${gameCode}`)}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Lobby
           </Button>
           
           <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={restartGame}
+            >
+              <Zap className="mr-2 h-4 w-4" />
+              New Game
+            </Button>
+
             <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-full px-4 py-2">
               {[...Array(3)].map((_, i) => (
                 <Heart
@@ -242,7 +276,7 @@ export default function GravityPage() {
                     Gravity Challenge
                   </h2>
                   <p className="text-muted-foreground">
-                    Type the English words before they fall off the screen!
+                    Type the Danish words before they fall off the screen!
                   </p>
                 </div>
 
@@ -254,15 +288,15 @@ export default function GravityPage() {
                         Falling Speed
                       </label>
                       <span className="text-sm text-muted-foreground">
-                        {baseSpeed === 0.5 ? 'Slow' : baseSpeed === 0.8 ? 'Medium' : baseSpeed === 1.2 ? 'Fast' : 'Extreme'}
+                        {baseSpeed <= 0.08 ? 'Slow' : baseSpeed <= 0.15 ? 'Medium' : baseSpeed <= 0.3 ? 'Fast' : 'Extreme'}
                       </span>
                     </div>
                     <Slider
                       value={[baseSpeed]}
                       onValueChange={(value) => setBaseSpeed(value[0])}
-                      min={0.5}
-                      max={1.8}
-                      step={0.1}
+                      min={0.05}
+                      max={0.5}
+                      step={0.05}
                       className="w-full"
                     />
                     <div className="flex justify-between text-xs text-muted-foreground">
@@ -284,7 +318,7 @@ export default function GravityPage() {
         ) : !gameOver ? (
           <>
             {/* Game Area */}
-            <div className="max-w-5xl mx-auto mb-8 relative h-[500px] border-2 border-border rounded-lg bg-gradient-to-b from-muted/20 to-muted/40 overflow-hidden">
+            <div className="max-w-5xl mx-auto mb-4 relative h-[380px] border-2 border-border rounded-lg bg-gradient-to-b from-muted/20 to-muted/40 overflow-hidden">
               {/* Lane dividers */}
               <div className="absolute inset-0 grid grid-cols-3">
                 <div className="border-r border-border/30" />
@@ -340,23 +374,23 @@ export default function GravityPage() {
 
             {/* Input Area */}
             <div className="max-w-2xl mx-auto">
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-3">
                 <Card className="border-primary/50 bg-card/50 backdrop-blur">
-                  <CardContent className="pt-6">
-                    <div className="space-y-4">
-                      <p className="text-center text-muted-foreground">
-                        Type the English word to destroy it!
+                  <CardContent className="pt-4 pb-4">
+                    <div className="space-y-3">
+                      <p className="text-center text-sm text-muted-foreground">
+                        Type the Danish word to destroy it!
                       </p>
                       <Input
                         ref={inputRef}
                         value={currentInput}
                         onChange={(e) => setCurrentInput(e.target.value)}
                         placeholder="Type here..."
-                        className="text-xl h-14 text-center"
+                        className="text-xl h-12 text-center"
                         autoFocus
                       />
-                      <Button type="submit" size="lg" className="w-full">
-                        <Zap className="mr-2 h-5 w-5" />
+                      <Button type="submit" className="w-full">
+                        <Zap className="mr-2 h-4 w-4" />
                         Destroy Word
                       </Button>
                     </div>
@@ -365,21 +399,21 @@ export default function GravityPage() {
               </form>
 
               {/* Stats */}
-              <div className="grid grid-cols-2 gap-4 mt-6">
+              <div className="grid grid-cols-2 gap-3 mt-3">
                 <Card className="border-border/50 bg-card/50">
-                  <CardContent className="pt-6 text-center">
-                    <div className="text-3xl font-bold text-primary mb-1">
+                  <CardContent className="pt-4 pb-4 text-center">
+                    <div className="text-2xl font-bold text-primary mb-1">
                       {wordsDestroyed}
                     </div>
-                    <p className="text-sm text-muted-foreground">Destroyed</p>
+                    <p className="text-xs text-muted-foreground">Destroyed</p>
                   </CardContent>
                 </Card>
                 <Card className="border-border/50 bg-card/50">
-                  <CardContent className="pt-6 text-center">
-                    <div className="text-3xl font-bold text-orange-500 mb-1">
+                  <CardContent className="pt-4 pb-4 text-center">
+                    <div className="text-2xl font-bold text-orange-500 mb-1">
                       {combo}x
                     </div>
-                    <p className="text-sm text-muted-foreground">Best Combo</p>
+                    <p className="text-xs text-muted-foreground">Best Combo</p>
                   </CardContent>
                 </Card>
               </div>
@@ -413,7 +447,7 @@ export default function GravityPage() {
                     <Zap className="mr-2 h-4 w-4" />
                     Play Again
                   </Button>
-                  <Button variant="outline" onClick={() => router.push(`/lobby/${gameCode}`)}>
+                  <Button variant="outline" onClick={() => router.push(`/game/${gameCode}`)}>
                     Back to Lobby
                   </Button>
                 </div>

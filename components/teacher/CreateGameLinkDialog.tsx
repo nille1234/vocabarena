@@ -47,6 +47,10 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
   // Game selection
   const [selectedGames, setSelectedGames] = useState<GameMode[]>([]);
   const [crosswordWordCount, setCrosswordWordCount] = useState(10);
+  const [wordSearchWordCount, setWordSearchWordCount] = useState(10);
+  const [wordSearchShowList, setWordSearchShowList] = useState(true);
+  const [othelloAnswerMode, setOthelloAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [ticTacToeAnswerMode, setTicTacToeAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
   
   // Link details
   const [linkName, setLinkName] = useState("");
@@ -118,13 +122,17 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
       const code = generateGameCode();
       setGeneratedCode(code);
 
-      // Create game link with crossword settings
+      // Create game link with game-specific settings
       const linkResult = await createGameLink(
         linkName,
         code,
         listId,
         selectedGames,
-        selectedGames.includes('crossword') ? crosswordWordCount : undefined
+        selectedGames.includes('crossword') ? crosswordWordCount : undefined,
+        othelloAnswerMode,
+        ticTacToeAnswerMode,
+        selectedGames.includes('word-search') ? wordSearchWordCount : undefined,
+        selectedGames.includes('word-search') ? wordSearchShowList : undefined
       );
 
       if (!linkResult.success) {
@@ -135,8 +143,8 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
         throw new Error(linkResult.error || 'Failed to create game link');
       }
 
-      // Generate shareable link - use relative path for Henosia preview compatibility
-      const link = `/play/${code}`;
+      // Generate shareable link with full URL
+      const link = `${window.location.origin}/play/${code}`;
       setGeneratedLink(link);
 
       toast.success('Game link created successfully!');
@@ -159,6 +167,10 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
     setSelectedListId("");
     setSelectedGames([]);
     setCrosswordWordCount(10);
+    setWordSearchWordCount(10);
+    setWordSearchShowList(true);
+    setOthelloAnswerMode('text-input');
+    setTicTacToeAnswerMode('text-input');
     setLinkName("");
     setGeneratedCode("");
     setGeneratedLink("");
@@ -226,6 +238,14 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
             onSelectedGamesChange={setSelectedGames}
             crosswordWordCount={crosswordWordCount}
             onCrosswordWordCountChange={setCrosswordWordCount}
+            wordSearchWordCount={wordSearchWordCount}
+            onWordSearchWordCountChange={setWordSearchWordCount}
+            wordSearchShowList={wordSearchShowList}
+            onWordSearchShowListChange={setWordSearchShowList}
+            othelloAnswerMode={othelloAnswerMode}
+            onOthelloAnswerModeChange={setOthelloAnswerMode}
+            ticTacToeAnswerMode={ticTacToeAnswerMode}
+            onTicTacToeAnswerModeChange={setTicTacToeAnswerMode}
           />
         )}
 

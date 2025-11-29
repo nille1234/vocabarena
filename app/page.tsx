@@ -1,59 +1,26 @@
-"use client";
+'use client'
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { motion } from "framer-motion";
-import { Users, Trophy, Sparkles, BookOpen, GraduationCap, Link as LinkIcon, LogIn, UserPlus } from "lucide-react";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Users, Trophy, Sparkles, BookOpen, GraduationCap, Link as LinkIcon } from "lucide-react";
 import Link from "next/link";
+import { HomeNav } from "@/components/home/HomeNav";
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       {/* Navigation Header */}
-      <nav className="border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-6 w-6 text-primary" />
-              <span className="text-xl font-heading font-bold">VocabArena</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <Link href="/auth/login">
-                <Button variant="ghost" size="sm">
-                  <LogIn className="mr-2 h-4 w-4" />
-                  Login
-                </Button>
-              </Link>
-              <Link href="/auth/sign-up">
-                <Button size="sm">
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Sign Up
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <HomeNav />
 
       {/* Hero Section */}
       <div className="container mx-auto px-4 py-16 md:py-24">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-center space-y-6 max-w-4xl mx-auto"
-        >
+        <div className="text-center space-y-6 max-w-4xl mx-auto">
           <div className="inline-block">
-            <motion.div
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="bg-primary/10 border border-primary/20 rounded-full px-6 py-2 mb-6"
-            >
+            <div className="bg-primary/10 border border-primary/20 rounded-full px-6 py-2 mb-6">
               <span className="text-primary font-medium text-sm">
                 🎮 Interactive Vocabulary Learning
               </span>
-            </motion.div>
+            </div>
           </div>
 
           <h1 className="text-5xl md:text-7xl font-heading font-bold tracking-tight">
@@ -67,28 +34,18 @@ export default function HomePage() {
             Create engaging vocabulary games for your students. Share game links and let them learn through play!
           </p>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="pt-6"
-          >
-            <Link href="/teacher">
-              <Button size="lg" className="text-lg px-8 h-14">
+          <div className="pt-6">
+            <Button size="lg" className="text-lg px-8 h-14" asChild>
+              <Link href="/auth/login">
                 <Sparkles className="mr-2 h-5 w-5" />
-                Go to Teacher Dashboard
-              </Button>
-            </Link>
-          </motion.div>
-        </motion.div>
+                Get Started - Login
+              </Link>
+            </Button>
+          </div>
+        </div>
 
         {/* How It Works Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.6 }}
-          className="mt-24 max-w-5xl mx-auto"
-        >
+        <div className="mt-24 max-w-5xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-heading font-bold mb-4">
               How It Works
@@ -138,15 +95,10 @@ export default function HomePage() {
               </CardHeader>
             </Card>
           </div>
-        </motion.div>
+        </div>
 
         {/* Features Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.8 }}
-          className="mt-24"
-        >
+        <div className="mt-24">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-heading font-bold mb-4">
               18 Engaging Game Modes
@@ -193,15 +145,10 @@ export default function HomePage() {
               </CardHeader>
             </Card>
           </div>
-        </motion.div>
+        </div>
 
         {/* Teacher Features */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 1.0 }}
-          className="mt-24"
-        >
+        <div className="mt-24">
           <Card className="border-primary/50 bg-gradient-to-br from-primary/10 via-accent/10 to-secondary/10 backdrop-blur">
             <CardHeader className="text-center space-y-6 py-12">
               <CardTitle className="text-3xl md:text-4xl font-heading font-bold">
@@ -254,16 +201,16 @@ export default function HomePage() {
               </div>
 
               <div className="pt-6">
-                <Link href="/teacher">
-                  <Button size="lg" className="text-lg px-8 h-14">
+                <Button size="lg" className="text-lg px-8 h-14" asChild>
+                  <Link href="/auth/login">
                     <Sparkles className="mr-2 h-5 w-5" />
-                    Get Started
-                  </Button>
-                </Link>
+                    Login to Get Started
+                  </Link>
+                </Button>
               </div>
             </CardHeader>
           </Card>
-        </motion.div>
+        </div>
       </div>
 
       {/* Footer */}
