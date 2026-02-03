@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
-import { BookOpen, ArrowLeft, Sparkles, Play, Loader2 } from "lucide-react";
+import { BookOpen, ArrowLeft, Sparkles, Play, Loader2, Lock, CheckCircle2 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { getGameLinkByCode } from "@/lib/supabase/vocabularyManagement";
 import { GameLink, GameMode } from "@/types/game";
@@ -13,6 +13,16 @@ import { useGameStore } from "@/lib/store/gameStore";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 import { ALL_GAME_MODES } from "@/lib/constants/gameModes";
+import { getProgress, arePrerequisitesComplete, resetProgress, GameProgress } from "@/lib/utils/gameProgress";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { toast } from "sonner";
+import { RotateCcw, Download } from "lucide-react";
+import { generateStudentWordList, downloadWordDocument } from "@/lib/utils/wordListExport";
 
 export default function PlayGamePage() {
   const params = useParams();
@@ -24,6 +34,40 @@ export default function PlayGamePage() {
   const [gameLink, setGameLink] = useState<GameLink | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [prerequisitesComplete, setPrerequisitesComplete] = useState(false);
+  const [progress, setProgress] = useState<GameProgress>({ 
+    matchCompleted: false, 
+    flashcardsCompleted: false,
+    completedAt: null
+  });
+
+  // Check prerequisites on mount and when returning to page
+  useEffect(() => {
+    if (typeof window !== 'undefined' && code) {
+      const checkProgress = async () => {
+        const currentProgress = await getProgress(code);
+        setProgress(currentProgress);
+        const complete = await arePrerequisitesComplete(code);
+        setPrerequisitesComplete(complete);
+      };
+      checkProgress();
+    }
+  }, [code]);
+
+  // Re-check progress when page becomes visible (user returns from a game)
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && code) {
+        const currentProgress = await getProgress(code);
+        setProgress(currentProgress);
+        const complete = await arePrerequisitesComplete(code);
+        setPrerequisitesComplete(complete);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [code]);
 
   useEffect(() => {
     async function loadGameLink() {
@@ -68,6 +112,8 @@ export default function PlayGamePage() {
             crosswordWordCount: link.crosswordWordCount || 10,
             wordSearchWordCount: link.wordSearchWordCount || 10,
             wordSearchShowList: link.wordSearchShowList !== undefined ? link.wordSearchShowList : true,
+            gapFillGapCount: link.gapFillGapCount || 15,
+            gapFillSummaryLength: link.gapFillSummaryLength || 250,
             allowHints: true,
             playMusic: true,
             playSFX: true,
@@ -86,14 +132,71 @@ export default function PlayGamePage() {
     loadGameLink();
   }, [code, setSession]);
 
-  const handleSelectMode = (modeId: string) => {
+  const handleSelectMode = (modeId: string, isLocked: boolean) => {
+    if (isLocked) return; // Don't navigate if locked
     router.push(`/game/${code}/${modeId}`);
   };
 
+  const handleResetProgress = async () => {
+    await resetProgress(code);
+    const freshProgress = await getProgress(code);
+    setProgress(freshProgress);
+    setPrerequisitesComplete(false);
+    toast.success('Progress reset! Start fresh with Match and Flashcards.');
+  };
+
+  const handleDownloadWordList = async () => {
+    if (!gameLink?.vocabularyList) return;
+    
+    try {
+      const blob = await generateStudentWordList(gameLink.vocabularyList);
+      const hasGermanTerms = gameLink.vocabularyList.cards.some(
+        card => card.germanTerm && card.germanTerm.trim() !== ""
+      );
+      const filename = `${gameLink.vocabularyList.name}_${hasGermanTerms ? 'German-Danish' : 'English-Danish'}`;
+      downloadWordDocument(blob, filename);
+      toast.success('Word list downloaded!');
+    } catch (error) {
+      console.error('Error downloading word list:', error);
+      toast.error('Failed to download word list');
+    }
+  };
+
   // Filter game modes to only show enabled ones
+  // Always include match and flashcards if prerequisites are required
   const enabledGameModes = gameLink 
-    ? ALL_GAME_MODES.filter(mode => gameLink.enabledGames.includes(mode.id as GameMode))
+    ? ALL_GAME_MODES.filter(mode => {
+        // Always show match and flashcards if prerequisites are required
+        if (gameLink.requirePrerequisiteGames && (mode.id === 'match' || mode.id === 'flashcards')) {
+          return true;
+        }
+        // Otherwise, check if the game is in enabledGames
+        return gameLink.enabledGames.includes(mode.id as GameMode);
+      })
     : [];
+
+  // Sort game modes: when prerequisites are required, show Match and Flashcards first
+  const sortedGameModes = gameLink?.requirePrerequisiteGames
+    ? [...enabledGameModes].sort((a, b) => {
+        // Match should be first
+        if (a.id === 'match') return -1;
+        if (b.id === 'match') return 1;
+        // Flashcards should be second
+        if (a.id === 'flashcards') return -1;
+        if (b.id === 'flashcards') return 1;
+        // All other games maintain their relative order
+        return 0;
+      })
+    : enabledGameModes;
+
+  // Check if a game is locked based on prerequisites
+  const isGameLocked = (modeId: string): boolean => {
+    if (!gameLink?.requirePrerequisiteGames) return false;
+    if (prerequisitesComplete) return false;
+    // Match and Flashcards are never locked
+    if (modeId === 'match' || modeId === 'flashcards') return false;
+    return true;
+  };
 
   if (loading) {
     return (
@@ -134,15 +237,28 @@ export default function PlayGamePage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       <div className="container mx-auto px-4 py-8">
-        {/* Back Button */}
-        <Button 
-          variant="ghost" 
-          className="mb-8"
-          onClick={() => router.push('/')}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Home
-        </Button>
+        {/* Header Buttons */}
+        <div className="flex items-center justify-between mb-8">
+          <Button 
+            variant="ghost"
+            onClick={() => router.push('/')}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Home
+          </Button>
+          
+          {gameLink.requirePrerequisiteGames && (
+            <Button 
+              variant="outline"
+              size="sm"
+              onClick={handleResetProgress}
+              title="Reset your Match and Flashcards progress"
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Reset Progress
+            </Button>
+          )}
+        </div>
 
         {/* Header */}
         <motion.div
@@ -198,11 +314,56 @@ export default function PlayGamePage() {
                       </div>
                       <p className="text-xs text-muted-foreground">Games</p>
                     </div>
+                    {gameLink.allowWordListDownload && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDownloadWordList}
+                        className="ml-2"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download Word List
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
             </Card>
           </motion.div>
+
+          {/* Prerequisites Progress */}
+          {gameLink.requirePrerequisiteGames && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.15 }}
+            >
+              {prerequisitesComplete ? (
+                <Alert className="border-green-500/50 bg-green-500/10">
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <AlertDescription className="text-green-700 dark:text-green-400 space-y-3">
+                    <div>
+                      <strong>All games unlocked!</strong> You've completed Match and Flashcards once. Great work!
+                    </div>
+                    <Button 
+                      onClick={() => router.push(`/game/${code}`)}
+                      className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      <Play className="mr-2 h-4 w-4" />
+                      View All Games
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Alert className="border-amber-500/50 bg-amber-500/10">
+                  <Lock className="h-4 w-4 text-amber-500" />
+                  <AlertDescription className="text-amber-700 dark:text-amber-400">
+                    <strong>Complete Match (1x) and Flashcards (1x) to unlock all games:</strong> Match {progress.matchCompleted ? '✓' : '(0/1)'} | Flashcards {progress.flashcardsCompleted ? '✓' : '(0/1)'}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </motion.div>
+          )}
 
           {/* Game Modes Grid */}
           <motion.div
@@ -210,7 +371,7 @@ export default function PlayGamePage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
           >
-            {enabledGameModes.length === 0 ? (
+            {sortedGameModes.length === 0 ? (
               <Card className="border-border/50 bg-card/50 backdrop-blur">
                 <CardContent className="pt-6 text-center py-12">
                   <p className="text-muted-foreground">
@@ -220,26 +381,29 @@ export default function PlayGamePage() {
               </Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {enabledGameModes.map((mode, index) => (
-                  <motion.div
-                    key={mode.id}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.3, delay: 0.3 + index * 0.05 }}
-                  >
+                {sortedGameModes.map((mode, index) => {
+                  const locked = isGameLocked(mode.id);
+                  const gameCard = (
                     <Card 
                       className={`
-                        border-2 border-border/50 cursor-pointer transition-all duration-300 
-                        hover:scale-105 hover:border-primary/50 hover:shadow-lg
+                        border-2 border-border/50 transition-all duration-300 
                         bg-gradient-to-br ${mode.color}
+                        ${locked ? 'opacity-50 grayscale cursor-not-allowed' : 'cursor-pointer hover:scale-105 hover:border-primary/50 hover:shadow-lg'}
                       `}
-                      onClick={() => handleSelectMode(mode.id)}
+                      onClick={() => handleSelectMode(mode.id, locked)}
                     >
                       <CardHeader>
                         <div className="flex items-start justify-between">
-                          <div className="text-5xl mb-2">{mode.icon}</div>
+                          <div className="text-5xl mb-2 relative">
+                            {mode.icon}
+                            {locked && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <Lock className="h-8 w-8 text-muted-foreground" />
+                              </div>
+                            )}
+                          </div>
                           <Badge variant="secondary" className="text-xs">
-                            Play
+                            {locked ? 'Locked' : 'Play'}
                           </Badge>
                         </div>
                         <CardTitle className="font-heading text-xl">
@@ -253,18 +417,52 @@ export default function PlayGamePage() {
                         <Button 
                           className="w-full" 
                           variant="outline"
+                          disabled={locked}
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleSelectMode(mode.id);
+                            handleSelectMode(mode.id, locked);
                           }}
                         >
-                          <Play className="mr-2 h-4 w-4" />
-                          Start Game
+                          {locked ? (
+                            <>
+                              <Lock className="mr-2 h-4 w-4" />
+                              Locked
+                            </>
+                          ) : (
+                            <>
+                              <Play className="mr-2 h-4 w-4" />
+                              Start Game
+                            </>
+                          )}
                         </Button>
                       </CardContent>
                     </Card>
-                  </motion.div>
-                ))}
+                  );
+
+                  return (
+                    <motion.div
+                      key={mode.id}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.3, delay: 0.3 + index * 0.05 }}
+                    >
+                      {locked ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              {gameCard}
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Complete Match and Flashcards (1x each) to unlock</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        gameCard
+                      )}
+                    </motion.div>
+                  );
+                })}
               </div>
             )}
           </motion.div>

@@ -8,7 +8,10 @@ import {
   Trash2, 
   Edit2, 
   Check, 
-  X
+  X,
+  Download,
+  Copy,
+  FileEdit
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -26,6 +29,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { EditVocabularyListDialog } from "./EditVocabularyListDialog";
+import {
+  generateWordDocument,
+  generateGermanEnglishWordDocument,
+  downloadWordDocument,
+  copyGermanEnglishWords,
+} from "@/lib/utils/wordListExport";
 
 interface VocabularyListsTabProps {
   vocabularyLists: VocabularyList[];
@@ -42,6 +52,14 @@ export function VocabularyListsTab({ vocabularyLists, onRefresh }: VocabularyLis
     id: string;
     name: string;
   } | null>(null);
+
+  // Edit words dialog
+  const [editWordsDialog, setEditWordsDialog] = useState<VocabularyList | null>(null);
+
+  // Loading states
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadingDeEnId, setDownloadingDeEnId] = useState<string | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
 
   const handleStartEditList = (list: VocabularyList) => {
     setEditingListId(list.id);
@@ -86,6 +104,53 @@ export function VocabularyListsTab({ vocabularyLists, onRefresh }: VocabularyLis
       toast.error('Failed to delete');
     } finally {
       setDeleteConfirm(null);
+    }
+  };
+
+  const handleDownloadWord = async (list: VocabularyList) => {
+    setDownloadingId(list.id);
+    try {
+      const blob = await generateWordDocument(list);
+      downloadWordDocument(blob, list.name);
+      toast.success('Word document downloaded');
+    } catch (error) {
+      console.error('Error generating Word document:', error);
+      toast.error('Failed to generate Word document');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleDownloadGermanEnglish = async (list: VocabularyList) => {
+    setDownloadingDeEnId(list.id);
+    try {
+      const blob = await generateGermanEnglishWordDocument(list);
+      downloadWordDocument(blob, `${list.name}_DE-EN`);
+      toast.success('German/English document downloaded');
+    } catch (error) {
+      console.error('Error generating German/English document:', error);
+      toast.error('Failed to generate document');
+    } finally {
+      setDownloadingDeEnId(null);
+    }
+  };
+
+  const handleCopyGermanEnglish = async (list: VocabularyList) => {
+    setCopyingId(list.id);
+    try {
+      await copyGermanEnglishWords(list.cards);
+      // Check if list has German terms to show appropriate message
+      const hasGermanTerms = list.cards.some(card => card.germanTerm && card.germanTerm.trim() !== "");
+      if (hasGermanTerms) {
+        toast.success('German words copied to clipboard');
+      } else {
+        toast.success('English words copied to clipboard');
+      }
+    } catch (error) {
+      console.error('Error copying words:', error);
+      toast.error('Failed to copy words');
+    } finally {
+      setCopyingId(null);
     }
   };
 
@@ -157,7 +222,42 @@ export function VocabularyListsTab({ vocabularyLists, onRefresh }: VocabularyLis
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownloadWord(list)}
+                  disabled={downloadingId === list.id}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {downloadingId === list.id ? 'Downloading...' : 'Download Full'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownloadGermanEnglish(list)}
+                  disabled={downloadingDeEnId === list.id}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {downloadingDeEnId === list.id ? 'Downloading...' : 'Download DE/EN'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopyGermanEnglish(list)}
+                  disabled={copyingId === list.id}
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  {copyingId === list.id ? 'Copying...' : 'Copy DE/EN'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditWordsDialog(list)}
+                >
+                  <FileEdit className="h-4 w-4 mr-2" />
+                  Edit Words
+                </Button>
                 <Button
                   variant="destructive"
                   size="sm"
@@ -189,6 +289,19 @@ export function VocabularyListsTab({ vocabularyLists, onRefresh }: VocabularyLis
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Words Dialog */}
+      {editWordsDialog && (
+        <EditVocabularyListDialog
+          list={editWordsDialog}
+          open={!!editWordsDialog}
+          onOpenChange={(open) => !open && setEditWordsDialog(null)}
+          onSuccess={() => {
+            setEditWordsDialog(null);
+            onRefresh();
+          }}
+        />
+      )}
     </>
   );
 }

@@ -2,7 +2,7 @@
 
 ## Overview
 
-VocabArena now uses an **invite-only system** where only authorized super admins can create teacher accounts. Public sign-up has been disabled.
+Quizzy now uses an **invite-only system** where only authorized super admins can create teacher accounts. Public sign-up has been disabled.
 
 ## User Roles
 

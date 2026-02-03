@@ -112,7 +112,7 @@ export default function WordSearchPage() {
   }, [gameStarted, vocabulary, initializeGame]);
 
   useEffect(() => {
-    if (foundWords.size === placedWords.length && placedWords.length > 0 && gameStarted) {
+    if (placedWords.length > 0 && foundWords.size === placedWords.length && gameStarted) {
       // All words found!
       audioManager.playCelebration();
       setScore(prev => prev + 50); // Completion bonus

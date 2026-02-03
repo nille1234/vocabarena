@@ -13,7 +13,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Save, Settings, BookOpen } from "lucide-react";
+import { Loader2, Save, Settings, BookOpen, Info } from "lucide-react";
 import { toast } from "sonner";
 import {
   updateGameLink,
@@ -25,6 +25,14 @@ import {
 import { GameLink, GameMode, VocabCard } from "@/types/game";
 import { WordListEditor } from "./WordListEditor";
 import { GameSelectionStep } from "./dialog-steps/GameSelectionStep";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Label } from "@/components/ui/label";
 
 interface EditGameLinkDialogProps {
   open: boolean;
@@ -45,6 +53,15 @@ export function EditGameLinkDialog({
   const [wordSearchShowList, setWordSearchShowList] = useState<boolean>(true);
   const [othelloAnswerMode, setOthelloAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
   const [ticTacToeAnswerMode, setTicTacToeAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [connectFourAnswerMode, setConnectFourAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [jeopardyAnswerMode, setJeopardyAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [jeopardyTimeLimit, setJeopardyTimeLimit] = useState<number>(30);
+  const [blokusAnswerMode, setBlokusAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [blokusTimeLimit, setBlokusTimeLimit] = useState<number | null>(null);
+  const [gapFillGapCount, setGapFillGapCount] = useState<number>(15);
+  const [gapFillSummaryLength, setGapFillSummaryLength] = useState<number>(250);
+  const [requirePrerequisiteGames, setRequirePrerequisiteGames] = useState<boolean>(false);
+  const [allowWordListDownload, setAllowWordListDownload] = useState<boolean>(false);
   const [vocabularyCards, setVocabularyCards] = useState<VocabCard[]>([]);
   const [originalCards, setOriginalCards] = useState<VocabCard[]>([]);
   const [vocabularyListName, setVocabularyListName] = useState<string>("");
@@ -61,6 +78,15 @@ export function EditGameLinkDialog({
       setWordSearchShowList(gameLink.wordSearchShowList !== undefined ? gameLink.wordSearchShowList : true);
       setOthelloAnswerMode(gameLink.othelloAnswerMode || 'text-input');
       setTicTacToeAnswerMode(gameLink.ticTacToeAnswerMode || 'text-input');
+      setConnectFourAnswerMode(gameLink.connectFourAnswerMode || 'text-input');
+      setJeopardyAnswerMode(gameLink.jeopardyAnswerMode || 'text-input');
+      setJeopardyTimeLimit(gameLink.jeopardyTimeLimit || 30);
+      setBlokusAnswerMode(gameLink.blokusAnswerMode || 'text-input');
+      setBlokusTimeLimit(gameLink.blokusTimeLimit || null);
+      setGapFillGapCount(gameLink.gapFillGapCount || 15);
+      setGapFillSummaryLength(gameLink.gapFillSummaryLength || 250);
+      setRequirePrerequisiteGames(gameLink.requirePrerequisiteGames || false);
+      setAllowWordListDownload(gameLink.allowWordListDownload || false);
       loadVocabularyList();
     }
   }, [gameLink, open]);
@@ -129,6 +155,15 @@ export function EditGameLinkDialog({
         wordSearchShowList: selectedGames.includes('word-search') ? wordSearchShowList : undefined,
         othelloAnswerMode: selectedGames.includes('othello') ? othelloAnswerMode : undefined,
         ticTacToeAnswerMode: selectedGames.includes('tic-tac-toe') ? ticTacToeAnswerMode : undefined,
+        connectFourAnswerMode: selectedGames.includes('connect-four') ? connectFourAnswerMode : undefined,
+        jeopardyAnswerMode: selectedGames.includes('jeopardy') ? jeopardyAnswerMode : undefined,
+        jeopardyTimeLimit: selectedGames.includes('jeopardy') ? jeopardyTimeLimit : undefined,
+        blokusAnswerMode: selectedGames.includes('blokus') ? blokusAnswerMode : undefined,
+        blokusTimeLimit: selectedGames.includes('blokus') ? blokusTimeLimit : undefined,
+        gapFillGapCount: selectedGames.includes('gap-fill') ? gapFillGapCount : undefined,
+        gapFillSummaryLength: selectedGames.includes('gap-fill') ? gapFillSummaryLength : undefined,
+        requirePrerequisiteGames: requirePrerequisiteGames,
+        allowWordListDownload: allowWordListDownload,
       });
 
       if (result.success) {
@@ -269,7 +304,55 @@ export function EditGameLinkDialog({
               onOthelloAnswerModeChange={setOthelloAnswerMode}
               ticTacToeAnswerMode={ticTacToeAnswerMode}
               onTicTacToeAnswerModeChange={setTicTacToeAnswerMode}
+              connectFourAnswerMode={connectFourAnswerMode}
+              onConnectFourAnswerModeChange={setConnectFourAnswerMode}
+              jeopardyAnswerMode={jeopardyAnswerMode}
+              onJeopardyAnswerModeChange={setJeopardyAnswerMode}
+              jeopardyTimeLimit={jeopardyTimeLimit}
+              onJeopardyTimeLimitChange={setJeopardyTimeLimit}
+              blokusAnswerMode={blokusAnswerMode}
+              onBlokusAnswerModeChange={setBlokusAnswerMode}
+              blokusTimeLimit={blokusTimeLimit}
+              onBlokusTimeLimitChange={setBlokusTimeLimit}
+              gapFillGapCount={gapFillGapCount}
+              onGapFillGapCountChange={setGapFillGapCount}
+              gapFillSummaryLength={gapFillSummaryLength}
+              onGapFillSummaryLengthChange={setGapFillSummaryLength}
+              requirePrerequisiteGames={requirePrerequisiteGames}
+              onRequirePrerequisiteGamesChange={setRequirePrerequisiteGames}
             />
+
+            {/* Word List Download Option */}
+            <div className="flex items-start space-x-2 rounded-lg border border-border/50 bg-muted/30 p-4">
+              <Checkbox
+                id="allowWordListDownload"
+                checked={allowWordListDownload}
+                onCheckedChange={(checked) => setAllowWordListDownload(checked as boolean)}
+              />
+              <div className="flex-1 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Label
+                    htmlFor="allowWordListDownload"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Allow students to download word list
+                  </Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p>Students can download a Word document with the vocabulary list (German-Danish or English-Danish format)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Provides a downloadable vocabulary reference for homework practice
+                </p>
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="words" className="space-y-4">

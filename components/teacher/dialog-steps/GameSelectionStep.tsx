@@ -8,9 +8,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Info } from "lucide-react";
 import { GameMode } from "@/types/game";
 import { ALL_GAME_MODES } from "@/lib/constants/gameModes";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface GameSelectionStepProps {
   selectedGames: GameMode[];
@@ -25,6 +31,22 @@ interface GameSelectionStepProps {
   onOthelloAnswerModeChange: (mode: 'text-input' | 'multiple-choice') => void;
   ticTacToeAnswerMode: 'text-input' | 'multiple-choice';
   onTicTacToeAnswerModeChange: (mode: 'text-input' | 'multiple-choice') => void;
+  connectFourAnswerMode: 'text-input' | 'multiple-choice';
+  onConnectFourAnswerModeChange: (mode: 'text-input' | 'multiple-choice') => void;
+  jeopardyAnswerMode: 'text-input' | 'multiple-choice';
+  onJeopardyAnswerModeChange: (mode: 'text-input' | 'multiple-choice') => void;
+  jeopardyTimeLimit: number;
+  onJeopardyTimeLimitChange: (limit: number) => void;
+  blokusAnswerMode: 'text-input' | 'multiple-choice';
+  onBlokusAnswerModeChange: (mode: 'text-input' | 'multiple-choice') => void;
+  blokusTimeLimit: number | null;
+  onBlokusTimeLimitChange: (limit: number | null) => void;
+  gapFillGapCount: number;
+  onGapFillGapCountChange: (count: number) => void;
+  gapFillSummaryLength: number;
+  onGapFillSummaryLengthChange: (length: number) => void;
+  requirePrerequisiteGames?: boolean;
+  onRequirePrerequisiteGamesChange?: (value: boolean) => void;
 }
 
 export function GameSelectionStep({
@@ -40,6 +62,22 @@ export function GameSelectionStep({
   onOthelloAnswerModeChange,
   ticTacToeAnswerMode,
   onTicTacToeAnswerModeChange,
+  connectFourAnswerMode,
+  onConnectFourAnswerModeChange,
+  jeopardyAnswerMode,
+  onJeopardyAnswerModeChange,
+  jeopardyTimeLimit,
+  onJeopardyTimeLimitChange,
+  blokusAnswerMode,
+  onBlokusAnswerModeChange,
+  blokusTimeLimit,
+  onBlokusTimeLimitChange,
+  gapFillGapCount,
+  onGapFillGapCountChange,
+  gapFillSummaryLength,
+  onGapFillSummaryLengthChange,
+  requirePrerequisiteGames,
+  onRequirePrerequisiteGamesChange,
 }: GameSelectionStepProps) {
   const handleToggleGame = (gameId: GameMode) => {
     onSelectedGamesChange(
@@ -61,6 +99,10 @@ export function GameSelectionStep({
   const isWordSearchSelected = selectedGames.includes('word-search');
   const isOthelloSelected = selectedGames.includes('othello');
   const isTicTacToeSelected = selectedGames.includes('tic-tac-toe');
+  const isConnectFourSelected = selectedGames.includes('connect-four');
+  const isJeopardySelected = selectedGames.includes('jeopardy');
+  const isBlokusSelected = selectedGames.includes('blokus');
+  const isGapFillSelected = selectedGames.includes('gap-fill');
 
   return (
     <div className="space-y-4">
@@ -271,9 +313,269 @@ export function GameSelectionStep({
                 </CardContent>
               </Card>
             )}
+
+            {/* Connect Four Settings */}
+            {isConnectFourSelected && (
+              <Card className="border-primary/50 bg-primary/5">
+                <CardContent className="pt-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-base font-semibold">
+                        Connect Four Answer Mode
+                      </Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Choose how students will answer vocabulary questions
+                      </p>
+                    </div>
+                    
+                    <RadioGroup value={connectFourAnswerMode} onValueChange={onConnectFourAnswerModeChange}>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="text-input" id="connectfour-text" />
+                        <Label htmlFor="connectfour-text" className="font-normal cursor-pointer">
+                          Text Input - Students type their answers
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="multiple-choice" id="connectfour-mc" />
+                        <Label htmlFor="connectfour-mc" className="font-normal cursor-pointer">
+                          Multiple Choice - Students choose from 4 options
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Jeopardy Settings */}
+            {isJeopardySelected && (
+              <Card className="border-primary/50 bg-primary/5">
+                <CardContent className="pt-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-base font-semibold">
+                        Jeopardy Settings
+                      </Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Configure answer mode and time limit for Jeopardy
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <Label>Answer Mode</Label>
+                      <RadioGroup value={jeopardyAnswerMode} onValueChange={onJeopardyAnswerModeChange}>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="text-input" id="jeopardy-text" />
+                          <Label htmlFor="jeopardy-text" className="font-normal cursor-pointer">
+                            Text Input - Students type their answers
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="multiple-choice" id="jeopardy-mc" />
+                          <Label htmlFor="jeopardy-mc" className="font-normal cursor-pointer">
+                            Multiple Choice - Students choose from 4 options
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+
+                    <div className="space-y-3 pt-2 border-t">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="jeopardyTimeLimit">Time Limit per Question</Label>
+                        <span className="text-sm font-semibold text-primary">
+                          {jeopardyTimeLimit} seconds
+                        </span>
+                      </div>
+                      <RadioGroup 
+                        value={jeopardyTimeLimit.toString()} 
+                        onValueChange={(value) => onJeopardyTimeLimitChange(parseInt(value))}
+                      >
+                        <div className="grid grid-cols-3 gap-2">
+                          {[10, 20, 30, 40, 50, 60].map((seconds) => (
+                            <div key={seconds} className="flex items-center space-x-2">
+                              <RadioGroupItem value={seconds.toString()} id={`time-${seconds}`} />
+                              <Label htmlFor={`time-${seconds}`} className="font-normal cursor-pointer">
+                                {seconds}s
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      </RadioGroup>
+                      <p className="text-xs text-muted-foreground">
+                        Choose how long students have to answer each question
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Blokus Settings */}
+            {isBlokusSelected && (
+              <Card className="border-primary/50 bg-primary/5">
+                <CardContent className="pt-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-base font-semibold">
+                        Blokus Settings
+                      </Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Configure answer mode and time limit for Blokus
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <Label>Answer Mode</Label>
+                      <RadioGroup value={blokusAnswerMode} onValueChange={onBlokusAnswerModeChange}>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="text-input" id="blokus-text" />
+                          <Label htmlFor="blokus-text" className="font-normal cursor-pointer">
+                            Text Input - Students type their answers
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="multiple-choice" id="blokus-mc" />
+                          <Label htmlFor="blokus-mc" className="font-normal cursor-pointer">
+                            Multiple Choice - Students choose from 4 options
+                          </Label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+
+                    <div className="space-y-3 pt-2 border-t">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="blokusTimeLimit">Time Limit per Question</Label>
+                        <span className="text-sm font-semibold text-primary">
+                          {blokusTimeLimit ? `${blokusTimeLimit} seconds` : 'No limit'}
+                        </span>
+                      </div>
+                      <RadioGroup 
+                        value={blokusTimeLimit?.toString() || 'none'} 
+                        onValueChange={(value) => onBlokusTimeLimitChange(value === 'none' ? null : parseInt(value))}
+                      >
+                        <div className="grid grid-cols-4 gap-2">
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="none" id="blokus-time-none" />
+                            <Label htmlFor="blokus-time-none" className="font-normal cursor-pointer">
+                              None
+                            </Label>
+                          </div>
+                          {[10, 20, 30, 40, 50, 60].map((seconds) => (
+                            <div key={seconds} className="flex items-center space-x-2">
+                              <RadioGroupItem value={seconds.toString()} id={`blokus-time-${seconds}`} />
+                              <Label htmlFor={`blokus-time-${seconds}`} className="font-normal cursor-pointer">
+                                {seconds}s
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                      </RadioGroup>
+                      <p className="text-xs text-muted-foreground">
+                        Choose how long students have to answer each question, or select "None" for no time limit
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Gap-Fill Settings */}
+            {isGapFillSelected && (
+              <Card className="border-primary/50 bg-primary/5">
+                <CardContent className="pt-6">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-base font-semibold">
+                        Gap-Fill Summary Settings
+                      </Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Configure options for the gap-fill summary activity
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="gapFillGapCount">Number of Gaps</Label>
+                        <span className="text-sm font-semibold text-primary">
+                          {gapFillGapCount} gaps
+                        </span>
+                      </div>
+                      <Slider
+                        id="gapFillGapCount"
+                        min={1}
+                        max={30}
+                        step={1}
+                        value={[gapFillGapCount]}
+                        onValueChange={(value) => onGapFillGapCountChange(value[0])}
+                        className="w-full"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Choose how many words will be missing from the summary (1-30)
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 pt-2 border-t">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="gapFillSummaryLength">Summary Length (words)</Label>
+                        <span className="text-sm font-semibold text-primary">
+                          {gapFillSummaryLength} words
+                        </span>
+                      </div>
+                      <Slider
+                        id="gapFillSummaryLength"
+                        min={100}
+                        max={400}
+                        step={25}
+                        value={[gapFillSummaryLength]}
+                        onValueChange={(value) => onGapFillSummaryLengthChange(value[0])}
+                        className="w-full"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Choose the target length for the generated summary (100-400 words)
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
           </div>
         </div>
       </ScrollArea>
+
+      {/* Prerequisite Games Setting */}
+      {onRequirePrerequisiteGamesChange && (
+        <div className="flex items-start space-x-2 rounded-lg border border-border/50 bg-muted/30 p-4">
+          <Checkbox
+            id="requirePrerequisites"
+            checked={requirePrerequisiteGames}
+            onCheckedChange={(checked) => onRequirePrerequisiteGamesChange(checked as boolean)}
+          />
+          <div className="flex-1 space-y-1">
+            <div className="flex items-center gap-2">
+              <Label
+                htmlFor="requirePrerequisites"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                Require Match and Flashcards completion first
+              </Label>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>Students must complete Match (once) and Flashcards (twice) before accessing other games. Progress is tracked in their browser.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Other games will be locked until students complete both prerequisite games
+            </p>
+          </div>
+        </div>
+      )}
 
       {selectedGames.length > 0 && (
         <Alert className="border-primary/50 bg-primary/5">

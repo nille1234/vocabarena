@@ -490,7 +490,7 @@ export default function CrosswordPage() {
                         }`}
                       >
                         {cell.number && (
-                          <span className="absolute top-0 left-0 text-[10px] font-extrabold text-white bg-violet-600 dark:bg-violet-500 px-1 py-0.5 rounded-br-md shadow-sm z-10 leading-none">
+                          <span className="absolute top-0 left-0 text-[10px] font-extrabold text-white bg-violet-600/70 dark:bg-violet-500/70 px-1 py-0.5 rounded-br-md shadow-sm z-10 leading-none">
                             {cell.number}
                           </span>
                         )}

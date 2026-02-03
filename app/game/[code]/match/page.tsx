@@ -6,13 +6,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Trophy, Timer, Zap, RotateCcw, BookOpen, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, Trophy, Timer, Zap, RotateCcw, BookOpen, CheckCircle2, XCircle, Sparkles } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameVocabulary } from "@/hooks/use-game-vocabulary";
 import { getRandomCards } from "@/lib/utils/gameLogic";
 import { getFirstDefinition } from "@/lib/utils/definitionParser";
 import confetti from "canvas-confetti";
 import { shuffleArray } from "@/lib/utils/vocabularyShuffle";
+import { markMatchComplete, getProgress, arePrerequisitesComplete } from "@/lib/utils/gameProgress";
 import {
   DndContext,
   DragEndEvent,
@@ -26,6 +27,8 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 
 type MatchPair = {
   id: string;
@@ -70,11 +73,11 @@ function DraggableCard({ id, content, disabled }: { id: string; content: string;
           bg-blue-500/10 border-blue-500/50
         `}
       >
-        <CardContent className="p-3 min-h-[80px] flex flex-col items-center justify-center">
-          <Badge className="mb-1 text-xs bg-blue-500 hover:bg-blue-600 text-white">
+        <CardContent className="p-1.5 min-h-[48px] flex flex-col items-center justify-center">
+          <Badge className="mb-0 text-[9px] bg-blue-500 hover:bg-blue-600 text-white px-1 py-0">
             Term
           </Badge>
-          <p className="text-center font-medium text-xs">{content}</p>
+          <p className="text-center font-medium text-[10px] leading-[1.2]">{content}</p>
         </CardContent>
       </Card>
     </motion.div>
@@ -112,11 +115,11 @@ function DroppableCard({
           ${disabled ? 'opacity-0' : ''}
         `}
       >
-        <CardContent className="p-3 min-h-[80px] flex flex-col items-center justify-center">
-          <Badge className="mb-1 text-xs bg-purple-500 hover:bg-purple-600 text-white">
+        <CardContent className="p-1.5 min-h-[48px] flex flex-col items-center justify-center">
+          <Badge className="mb-0 text-[9px] bg-purple-500 hover:bg-purple-600 text-white px-1 py-0">
             Definition
           </Badge>
-          <p className="text-center font-medium text-xs">{content}</p>
+          <p className="text-center font-medium text-[10px] leading-[1.2]">{content}</p>
         </CardContent>
       </Card>
     </motion.div>
@@ -146,6 +149,10 @@ export default function MatchPage() {
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [allWordsCompleted, setAllWordsCompleted] = useState(false);
   const [autoAdvanceCountdown, setAutoAdvanceCountdown] = useState<number | null>(null);
+  const [progressInitialized, setProgressInitialized] = useState(false);
+  const [hasCompletedAnyRound, setHasCompletedAnyRound] = useState(false);
+  const [requirePrerequisiteGames, setRequirePrerequisiteGames] = useState(false);
+  const [prerequisitesComplete, setPrerequisitesComplete] = useState(false);
 
   // Track which words have been attempted incorrectly in current round
   const [currentRoundErrors, setCurrentRoundErrors] = useState<Set<string>>(new Set());
@@ -173,7 +180,7 @@ export default function MatchPage() {
 
   // Initialize word progress from vocabulary
   useEffect(() => {
-    if (vocabulary && Array.isArray(vocabulary) && vocabulary.length > 0) {
+    if (vocabulary && Array.isArray(vocabulary) && vocabulary.length > 0 && !progressInitialized) {
       // Try to load progress from localStorage
       const storageKey = `match-progress-${gameCode}`;
       const savedProgress = localStorage.getItem(storageKey);
@@ -189,6 +196,7 @@ export default function MatchPage() {
             incorrectWords: parsed.incorrectWords.filter((id: string) => validIds.has(id)),
           };
           setWordProgress(validatedProgress);
+          setProgressInitialized(true);
         } catch (e) {
           // If parsing fails, initialize fresh
           setWordProgress({
@@ -196,6 +204,7 @@ export default function MatchPage() {
             correctWords: [],
             incorrectWords: [],
           });
+          setProgressInitialized(true);
         }
       } else {
         // Initialize with all words as unseen
@@ -204,9 +213,10 @@ export default function MatchPage() {
           correctWords: [],
           incorrectWords: [],
         });
+        setProgressInitialized(true);
       }
     }
-  }, [vocabulary, gameCode]);
+  }, [vocabulary, gameCode, progressInitialized]);
 
   // Save progress to localStorage whenever it changes
   useEffect(() => {
@@ -215,6 +225,43 @@ export default function MatchPage() {
       localStorage.setItem(storageKey, JSON.stringify(wordProgress));
     }
   }, [wordProgress, gameCode]);
+
+  // Fetch prerequisite setting and check progress
+  useEffect(() => {
+    async function fetchPrerequisiteStatus() {
+      const supabase = createClient();
+      const { data: gameLink } = await supabase
+        .from('game_links')
+        .select('require_prerequisite_games')
+        .eq('code', gameCode)
+        .single();
+      
+      if (gameLink) {
+        setRequirePrerequisiteGames(gameLink.require_prerequisite_games || false);
+      }
+    }
+    
+    fetchPrerequisiteStatus();
+  }, [gameCode]);
+
+  // Check if prerequisites are complete
+  useEffect(() => {
+    if (gameCode) {
+      const checkPrerequisites = async () => {
+        const { getProgress, arePrerequisitesComplete } = await import('@/lib/utils/gameProgress');
+        const complete = await arePrerequisitesComplete(gameCode);
+        const progressData = await getProgress(gameCode);
+        console.log('Match - Checking prerequisites:', {
+          gameCode,
+          complete,
+          progressData,
+          requirePrerequisiteGames
+        });
+        setPrerequisitesComplete(complete);
+      };
+      checkPrerequisites();
+    }
+  }, [gameCode, wordProgress, requirePrerequisiteGames]);
 
   // Initialize pairs based on current mode
   const initializeRound = () => {
@@ -234,9 +281,51 @@ export default function MatchPage() {
       const incorrectVocab = vocabulary.filter(v => wordProgress.incorrectWords.includes(v.id));
       wordsToUse = shuffleArray(incorrectVocab).slice(0, Math.min(10, incorrectVocab.length));
     } else {
-      // All words mastered!
-      setAllWordsCompleted(true);
-      return;
+      // All words completed
+      if (hasCompletedAnyRound) {
+        // User has completed at least one round in this session, show completion
+        // Mark Match game as complete for prerequisite tracking
+        const trackCompletion = async () => {
+          console.log('🎯 Match COMPLETED - Tracking progress...');
+          await markMatchComplete(gameCode);
+          
+          // Wait for database to update
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          const progressData = await getProgress(gameCode);
+          const complete = await arePrerequisitesComplete(gameCode);
+          console.log('📊 After markMatchComplete:', {
+            progressData,
+            complete,
+            gameCode
+          });
+          
+          // Update state with fresh data
+          setPrerequisitesComplete(complete);
+          
+          // Show completion screen after state is updated
+          setAllWordsCompleted(true);
+          
+          if (complete) {
+            toast.success('All games unlocked! 🎉');
+          } else {
+            toast.success('Match completed! ✓');
+          }
+        };
+        trackCompletion();
+        return;
+      } else {
+        // Fresh page load with saved progress showing all complete - reset and start a new round
+        const freshProgress = {
+          unseenWords: vocabulary.map(v => v.id),
+          correctWords: [],
+          incorrectWords: [],
+        };
+        setWordProgress(freshProgress);
+        setIsReviewMode(false);
+        const allVocab = vocabulary;
+        wordsToUse = shuffleArray(allVocab).slice(0, Math.min(10, allVocab.length));
+      }
     }
 
     const matchPairs: MatchPair[] = wordsToUse.map((card) => ({
@@ -252,10 +341,10 @@ export default function MatchPage() {
 
   // Initialize first round
   useEffect(() => {
-    if (vocabulary && vocabulary.length > 0 && pairs.length === 0 && !allWordsCompleted) {
+    if (vocabulary && vocabulary.length > 0 && pairs.length === 0 && !allWordsCompleted && progressInitialized) {
       initializeRound();
     }
-  }, [vocabulary, wordProgress, pairs.length, allWordsCompleted]);
+  }, [vocabulary, wordProgress, pairs.length, allWordsCompleted, progressInitialized]);
 
   // Shuffle definitions separately for display (but keep terms in order)
   const [shuffledDefinitions, setShuffledDefinitions] = useState<MatchPair[]>([]);
@@ -277,8 +366,9 @@ export default function MatchPage() {
 
   useEffect(() => {
     const matchedCount = pairs.filter((p) => p.matched).length;
-    if (matchedCount === pairs.length && pairs.length > 0 && !isComplete) {
+    if (pairs.length > 0 && matchedCount === pairs.length && !isComplete) {
       setIsComplete(true);
+      setHasCompletedAnyRound(true); // Mark that at least one round has been completed
       
       // Update word progress
       const newProgress = { ...wordProgress };
@@ -331,9 +421,39 @@ export default function MatchPage() {
       if (hasMoreWords) {
         // Start countdown for auto-advance
         setAutoAdvanceCountdown(3);
+      } else {
+        // All words completed! Track completion
+        const trackCompletion = async () => {
+          console.log('🎯 Match COMPLETED - Tracking progress...');
+          await markMatchComplete(gameCode);
+          
+          // Wait for database to update
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          const progressData = await getProgress(gameCode);
+          const complete = await arePrerequisitesComplete(gameCode);
+          console.log('📊 After markMatchComplete:', {
+            progressData,
+            complete,
+            gameCode
+          });
+          
+          // Update state with fresh data
+          setPrerequisitesComplete(complete);
+          
+          // Show completion screen after state is updated
+          setAllWordsCompleted(true);
+          
+          if (complete) {
+            toast.success('All games unlocked! 🎉');
+          } else {
+            toast.success('Match completed! ✓');
+          }
+        };
+        trackCompletion();
       }
     }
-  }, [pairs, isComplete, currentRoundErrors, wordProgress, isReviewMode]);
+  }, [pairs, isComplete, currentRoundErrors, wordProgress, isReviewMode, gameCode]);
 
   // Auto-advance countdown timer
   useEffect(() => {
@@ -449,6 +569,7 @@ export default function MatchPage() {
       setPairs([]);
       setAllWordsCompleted(false);
       setIsReviewMode(false);
+      setHasCompletedAnyRound(false);
     }
   };
 
@@ -462,13 +583,20 @@ export default function MatchPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-2">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" onClick={() => router.push(`/game/${gameCode}`)}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Lobby
-          </Button>
+        <div className="flex items-center justify-between mb-2">
+          {requirePrerequisiteGames && !prerequisitesComplete ? (
+            <Button variant="ghost" onClick={() => router.push(`/game/${gameCode}/flashcards`)}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Go to Flashcards
+            </Button>
+          ) : (
+            <Button variant="ghost" onClick={() => router.push(`/game/${gameCode}`)}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Lobby
+            </Button>
+          )}
 
           <div className="flex items-center gap-4">
             <Button
@@ -481,23 +609,23 @@ export default function MatchPage() {
               Reset Progress
             </Button>
 
-            <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-2">
-              <Timer className="h-5 w-5 text-primary" />
-              <span className="font-bold text-primary">{formatTime(timeElapsed)}</span>
+            <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-3 py-1.5">
+              <Timer className="h-4 w-4 text-primary" />
+              <span className="font-bold text-sm text-primary">{formatTime(timeElapsed)}</span>
             </div>
 
-            <div className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-full px-4 py-2">
-              <Trophy className="h-5 w-5 text-secondary" />
-              <span className="font-bold text-secondary">{score}</span>
+            <div className="flex items-center gap-2 bg-secondary/10 border border-secondary/20 rounded-full px-3 py-1.5">
+              <Trophy className="h-4 w-4 text-secondary" />
+              <span className="font-bold text-sm text-secondary">{score}</span>
             </div>
           </div>
         </div>
 
         {/* Overall Progress Card */}
-        <div className="max-w-6xl mx-auto mb-6">
+        <div className="max-w-6xl mx-auto mb-2">
           <Card className={isReviewMode ? "bg-orange-500/10 border-orange-500/30" : "bg-primary/5 border-primary/20"}>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between mb-3">
+            <CardContent className="pt-3 pb-3">
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <BookOpen className="h-5 w-5 text-primary" />
                   <span className="font-semibold">Overall Progress</span>
@@ -511,8 +639,8 @@ export default function MatchPage() {
                   {wordsCompleted} / {totalWords} words completed
                 </span>
               </div>
-              <Progress value={overallProgress} className="h-2 mb-3" />
-              <div className="grid grid-cols-3 gap-4 text-center text-sm">
+              <Progress value={overallProgress} className="h-2 mb-2" />
+              <div className="grid grid-cols-3 gap-3 text-center text-sm">
                 <div>
                   <div className="flex items-center justify-center gap-1 text-green-600 font-semibold">
                     <CheckCircle2 className="h-4 w-4" />
@@ -541,25 +669,25 @@ export default function MatchPage() {
 
         {/* Current Round Progress */}
         {!allWordsCompleted && pairs.length > 0 && (
-          <div className="max-w-6xl mx-auto mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">
+          <div className="max-w-6xl mx-auto mb-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-muted-foreground">
                 Current Round: {matchedCount} of {pairs.length} pairs matched
               </span>
-              <span className="text-sm text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {Math.round(progress)}% Complete
               </span>
             </div>
-            <Progress value={progress} className="h-2" />
+            <Progress value={progress} className="h-1.5" />
           </div>
         )}
 
         {/* Instructions */}
         {!allWordsCompleted && pairs.length > 0 && (
-          <div className="max-w-6xl mx-auto mb-6">
+          <div className="max-w-6xl mx-auto mb-2">
             <Card className="bg-primary/5 border-primary/20">
-              <CardContent className="pt-6 text-center">
-                <p className="text-sm text-muted-foreground">
+              <CardContent className="pt-2 pb-2 text-center">
+                <p className="text-xs text-muted-foreground">
                   Drag the <span className="text-blue-500 font-semibold">terms</span> from the top and drop them on their matching{' '}
                   <span className="text-purple-500 font-semibold">Danish translations</span> below
                 </p>
@@ -582,6 +710,32 @@ export default function MatchPage() {
                 <p className="text-xl text-muted-foreground mb-4">
                   You've mastered all {totalWords} words!
                 </p>
+
+                {/* All Games Unlocked Message */}
+                {requirePrerequisiteGames && prerequisitesComplete && (
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                    className="mb-6"
+                  >
+                    <Card className="border-green-500/50 bg-gradient-to-r from-green-500/10 to-emerald-500/10">
+                      <CardContent className="pt-4 pb-4">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <Sparkles className="h-6 w-6 text-green-600" />
+                          <h3 className="text-2xl font-bold text-green-600">
+                            All Games Unlocked!
+                          </h3>
+                          <Sparkles className="h-6 w-6 text-green-600" />
+                        </div>
+                        <p className="text-muted-foreground">
+                          You've completed both prerequisite games. You can now play any game in the lobby!
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
+
                 <div className="bg-muted/50 rounded-lg p-4 mb-6 max-w-md mx-auto">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
@@ -602,9 +756,17 @@ export default function MatchPage() {
                   <Button
                     variant="outline"
                     size="lg"
-                    onClick={() => router.push(`/game/${gameCode}`)}
+                    onClick={() => {
+                      if (requirePrerequisiteGames && !prerequisitesComplete) {
+                        router.push(`/game/${gameCode}/flashcards`);
+                      } else {
+                        router.push(`/game/${gameCode}`);
+                      }
+                    }}
                   >
-                    Back to Lobby
+                    {requirePrerequisiteGames && !prerequisitesComplete ? "Go to Flashcards" : 
+                     requirePrerequisiteGames && prerequisitesComplete ? "Explore All Games" : 
+                     "Back to Lobby"}
                   </Button>
                 </div>
               </CardContent>
@@ -623,11 +785,11 @@ export default function MatchPage() {
               onDragOver={handleDragOver}
             >
               {/* Terms (Draggable) */}
-              <div className="mb-6">
-                <h3 className="text-sm font-semibold mb-3 text-center text-blue-500">
+              <div className="mb-2">
+                <h3 className="text-xs font-semibold mb-1.5 text-center text-blue-500">
                   Terms (Drag these)
                 </h3>
-                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5">
                   <AnimatePresence>
                     {pairs.map((pair) => (
                       <DraggableCard
@@ -643,10 +805,10 @@ export default function MatchPage() {
 
               {/* Definitions (Droppable) - Shuffled separately */}
               <div>
-                <h3 className="text-sm font-semibold mb-3 text-center text-purple-500">
+                <h3 className="text-xs font-semibold mb-1.5 text-center text-purple-500">
                   Danish Translations (Drop here)
                 </h3>
-                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5">
                   <AnimatePresence>
                     {shuffledDefinitions.map((pair) => (
                       <DroppableCard
@@ -717,13 +879,23 @@ export default function MatchPage() {
                         <Zap className="mr-2 h-4 w-4" />
                         {autoAdvanceCountdown !== null ? 'Start Now' : 'Next Round'}
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="lg"
-                        onClick={() => router.push(`/game/${gameCode}`)}
-                      >
-                        Back to Lobby
-                      </Button>
+                      {requirePrerequisiteGames && !prerequisitesComplete ? (
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          onClick={() => router.push(`/game/${gameCode}/flashcards`)}
+                        >
+                          Go to Flashcards
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          onClick={() => router.push(`/game/${gameCode}`)}
+                        >
+                          Back to Lobby
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

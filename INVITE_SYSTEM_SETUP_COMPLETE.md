@@ -2,7 +2,7 @@
 
 ## What Was Implemented
 
-The invite-only user management system has been successfully set up for VocabArena. Here's what was done:
+The invite-only user management system has been successfully set up for Quizzy. Here's what was done:
 
 ### 1. Database Schema (Migrations 006 & 007)
 

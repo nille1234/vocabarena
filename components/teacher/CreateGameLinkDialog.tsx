@@ -51,11 +51,20 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
   const [wordSearchShowList, setWordSearchShowList] = useState(true);
   const [othelloAnswerMode, setOthelloAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
   const [ticTacToeAnswerMode, setTicTacToeAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [connectFourAnswerMode, setConnectFourAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [jeopardyAnswerMode, setJeopardyAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [jeopardyTimeLimit, setJeopardyTimeLimit] = useState(30);
+  const [blokusAnswerMode, setBlokusAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
+  const [blokusTimeLimit, setBlokusTimeLimit] = useState<number | null>(null);
+  const [gapFillGapCount, setGapFillGapCount] = useState(15);
+  const [gapFillSummaryLength, setGapFillSummaryLength] = useState(250);
   
   // Link details
   const [linkName, setLinkName] = useState("");
   const [generatedCode, setGeneratedCode] = useState("");
   const [generatedLink, setGeneratedLink] = useState("");
+  const [requirePrerequisiteGames, setRequirePrerequisiteGames] = useState(false);
+  const [allowWordListDownload, setAllowWordListDownload] = useState(false);
   
   // Processing
   const [isCreating, setIsCreating] = useState(false);
@@ -131,8 +140,17 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
         selectedGames.includes('crossword') ? crosswordWordCount : undefined,
         othelloAnswerMode,
         ticTacToeAnswerMode,
+        connectFourAnswerMode,
         selectedGames.includes('word-search') ? wordSearchWordCount : undefined,
-        selectedGames.includes('word-search') ? wordSearchShowList : undefined
+        selectedGames.includes('word-search') ? wordSearchShowList : undefined,
+        selectedGames.includes('gap-fill') ? gapFillGapCount : undefined,
+        selectedGames.includes('gap-fill') ? gapFillSummaryLength : undefined,
+        jeopardyAnswerMode,
+        jeopardyTimeLimit,
+        requirePrerequisiteGames,
+        blokusAnswerMode,
+        blokusTimeLimit,
+        allowWordListDownload
       );
 
       if (!linkResult.success) {
@@ -171,6 +189,13 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
     setWordSearchShowList(true);
     setOthelloAnswerMode('text-input');
     setTicTacToeAnswerMode('text-input');
+    setConnectFourAnswerMode('text-input');
+    setJeopardyAnswerMode('text-input');
+    setJeopardyTimeLimit(30);
+    setBlokusAnswerMode('text-input');
+    setBlokusTimeLimit(null);
+    setGapFillGapCount(15);
+    setGapFillSummaryLength(250);
     setLinkName("");
     setGeneratedCode("");
     setGeneratedLink("");
@@ -228,6 +253,8 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
             onParsedCardsChange={setParsedCards}
             selectedListId={selectedListId}
             onSelectedListIdChange={setSelectedListId}
+            existingLists={existingLists}
+            onExistingListsChange={setExistingLists}
           />
         )}
 
@@ -246,6 +273,20 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
             onOthelloAnswerModeChange={setOthelloAnswerMode}
             ticTacToeAnswerMode={ticTacToeAnswerMode}
             onTicTacToeAnswerModeChange={setTicTacToeAnswerMode}
+            connectFourAnswerMode={connectFourAnswerMode}
+            onConnectFourAnswerModeChange={setConnectFourAnswerMode}
+            jeopardyAnswerMode={jeopardyAnswerMode}
+            onJeopardyAnswerModeChange={setJeopardyAnswerMode}
+            jeopardyTimeLimit={jeopardyTimeLimit}
+            onJeopardyTimeLimitChange={setJeopardyTimeLimit}
+            blokusAnswerMode={blokusAnswerMode}
+            onBlokusAnswerModeChange={setBlokusAnswerMode}
+            blokusTimeLimit={blokusTimeLimit}
+            onBlokusTimeLimitChange={setBlokusTimeLimit}
+            gapFillGapCount={gapFillGapCount}
+            onGapFillGapCountChange={setGapFillGapCount}
+            gapFillSummaryLength={gapFillSummaryLength}
+            onGapFillSummaryLengthChange={setGapFillSummaryLength}
           />
         )}
 
@@ -256,6 +297,10 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
             onLinkNameChange={setLinkName}
             generatedCode={generatedCode}
             generatedLink={generatedLink}
+            requirePrerequisiteGames={requirePrerequisiteGames}
+            onRequirePrerequisiteGamesChange={setRequirePrerequisiteGames}
+            allowWordListDownload={allowWordListDownload}
+            onAllowWordListDownloadChange={setAllowWordListDownload}
             vocabularyName={getVocabularyName()}
             wordCount={getWordCount()}
             selectedGamesCount={selectedGames.length}

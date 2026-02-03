@@ -11,7 +11,7 @@ Supabase is your project's **database and authentication system**. Think of it a
 
 ## 🎯 Quick Overview: What You Have
 
-Your VocabArena project uses Supabase for:
+Your Quizzy project uses Supabase for:
 1. **User Authentication** (login/signup)
 2. **Vocabulary Storage** (word lists for games)
 3. **Game Sessions** (multiplayer game data)
@@ -24,7 +24,7 @@ Your VocabArena project uses Supabase for:
 ### How to Access
 1. Go to [supabase.com](https://supabase.com)
 2. Log in with your account
-3. Select your VocabArena project
+3. Select your Quizzy project
 
 ### Main Sections Explained
 

@@ -164,6 +164,7 @@ export async function getVocabularyListById(listId: string): Promise<VocabularyL
         definition: card.definition,
         germanTerm: card.german_term,
         orderIndex: card.order_index,
+        jeopardyCategory: card.jeopardy_category,
       })),
       createdAt: new Date(list.created_at),
       updatedAt: new Date(list.updated_at),
@@ -176,7 +177,7 @@ export async function getVocabularyListById(listId: string): Promise<VocabularyL
 
 export async function updateVocabularyList(
   listId: string,
-  updates: { name?: string; description?: string }
+  updates: { name?: string; description?: string; cards?: VocabCard[] }
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = createClient();
   if (!supabase) {
@@ -184,12 +185,46 @@ export async function updateVocabularyList(
   }
 
   try {
-    const { error } = await supabase
-      .from('vocabulary_lists')
-      .update(updates)
-      .eq('id', listId);
+    // Update list metadata if provided
+    if (updates.name !== undefined || updates.description !== undefined) {
+      const metadataUpdates: any = {};
+      if (updates.name !== undefined) metadataUpdates.name = updates.name;
+      if (updates.description !== undefined) metadataUpdates.description = updates.description;
 
-    if (error) throw error;
+      const { error } = await supabase
+        .from('vocabulary_lists')
+        .update(metadataUpdates)
+        .eq('id', listId);
+
+      if (error) throw error;
+    }
+
+    // Update cards if provided
+    if (updates.cards !== undefined) {
+      // Delete all existing cards for this list
+      const { error: deleteError } = await supabase
+        .from('vocabulary_cards')
+        .delete()
+        .eq('list_id', listId);
+
+      if (deleteError) throw deleteError;
+
+      // Insert new cards
+      const cardsToInsert = updates.cards.map((card) => ({
+        list_id: listId,
+        term: card.term,
+        definition: card.definition,
+        german_term: card.germanTerm,
+        order_index: card.orderIndex,
+        jeopardy_category: card.jeopardyCategory,
+      }));
+
+      const { error: insertError } = await supabase
+        .from('vocabulary_cards')
+        .insert(cardsToInsert);
+
+      if (insertError) throw insertError;
+    }
 
     return { success: true };
   } catch (error) {
@@ -415,8 +450,17 @@ export async function createGameLink(
   crosswordWordCount?: number,
   othelloAnswerMode?: 'text-input' | 'multiple-choice',
   ticTacToeAnswerMode?: 'text-input' | 'multiple-choice',
+  connectFourAnswerMode?: 'text-input' | 'multiple-choice',
   wordSearchWordCount?: number,
-  wordSearchShowList?: boolean
+  wordSearchShowList?: boolean,
+  gapFillGapCount?: number,
+  gapFillSummaryLength?: number,
+  jeopardyAnswerMode?: 'text-input' | 'multiple-choice',
+  jeopardyTimeLimit?: number,
+  requirePrerequisiteGames?: boolean,
+  blokusAnswerMode?: 'text-input' | 'multiple-choice',
+  blokusTimeLimit?: number | null,
+  allowWordListDownload?: boolean
 ): Promise<{ success: boolean; linkId?: string; error?: string }> {
   const supabase = createClient();
   if (!supabase) {
@@ -442,6 +486,15 @@ export async function createGameLink(
         word_search_show_list: wordSearchShowList !== undefined ? wordSearchShowList : true,
         othello_answer_mode: othelloAnswerMode || 'text-input',
         tic_tac_toe_answer_mode: ticTacToeAnswerMode || 'text-input',
+        connect_four_answer_mode: connectFourAnswerMode || 'text-input',
+        jeopardy_answer_mode: jeopardyAnswerMode || 'text-input',
+        jeopardy_time_limit: jeopardyTimeLimit || 30,
+        blokus_answer_mode: blokusAnswerMode || 'text-input',
+        blokus_time_limit: blokusTimeLimit,
+        gap_fill_gap_count: gapFillGapCount,
+        gap_fill_summary_length: gapFillSummaryLength,
+        require_prerequisite_games: requirePrerequisiteGames || false,
+        allow_word_list_download: allowWordListDownload || false,
         is_active: true,
         user_id: user.id,
       })
@@ -501,6 +554,12 @@ export async function getAllGameLinks(): Promise<GameLink[]> {
       wordSearchShowList: link.word_search_show_list,
       othelloAnswerMode: link.othello_answer_mode,
       ticTacToeAnswerMode: link.tic_tac_toe_answer_mode,
+      connectFourAnswerMode: link.connect_four_answer_mode,
+      blokusAnswerMode: link.blokus_answer_mode,
+      blokusTimeLimit: link.blokus_time_limit,
+      gapFillGapCount: link.gap_fill_gap_count,
+      gapFillSummaryLength: link.gap_fill_summary_length,
+      allowWordListDownload: link.allow_word_list_download,
       createdAt: new Date(link.created_at),
       expiresAt: link.expires_at ? new Date(link.expires_at) : undefined,
       isActive: link.is_active,
@@ -554,6 +613,7 @@ export async function getGameLinkByCode(code: string): Promise<GameLink | null> 
         definition: card.definition,
         germanTerm: card.german_term,
         orderIndex: card.order_index,
+        jeopardyCategory: card.jeopardy_category,
       })),
       createdAt: new Date(list.created_at),
       updatedAt: new Date(list.updated_at),
@@ -571,6 +631,15 @@ export async function getGameLinkByCode(code: string): Promise<GameLink | null> 
       wordSearchShowList: link.word_search_show_list,
       othelloAnswerMode: link.othello_answer_mode,
       ticTacToeAnswerMode: link.tic_tac_toe_answer_mode,
+      connectFourAnswerMode: link.connect_four_answer_mode,
+      jeopardyAnswerMode: link.jeopardy_answer_mode,
+      jeopardyTimeLimit: link.jeopardy_time_limit,
+      blokusAnswerMode: link.blokus_answer_mode,
+      blokusTimeLimit: link.blokus_time_limit,
+      gapFillGapCount: link.gap_fill_gap_count,
+      gapFillSummaryLength: link.gap_fill_summary_length,
+      requirePrerequisiteGames: link.require_prerequisite_games,
+      allowWordListDownload: link.allow_word_list_download,
       createdAt: new Date(link.created_at),
       expiresAt: link.expires_at ? new Date(link.expires_at) : undefined,
       isActive: link.is_active,
@@ -593,6 +662,15 @@ export async function updateGameLink(
     wordSearchShowList?: boolean;
     othelloAnswerMode?: 'text-input' | 'multiple-choice';
     ticTacToeAnswerMode?: 'text-input' | 'multiple-choice';
+    connectFourAnswerMode?: 'text-input' | 'multiple-choice';
+    jeopardyAnswerMode?: 'text-input' | 'multiple-choice';
+    jeopardyTimeLimit?: number;
+    blokusAnswerMode?: 'text-input' | 'multiple-choice';
+    blokusTimeLimit?: number | null;
+    gapFillGapCount?: number;
+    gapFillSummaryLength?: number;
+    requirePrerequisiteGames?: boolean;
+    allowWordListDownload?: boolean;
   }
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = createClient();
@@ -611,6 +689,15 @@ export async function updateGameLink(
     if (updates.wordSearchShowList !== undefined) updateData.word_search_show_list = updates.wordSearchShowList;
     if (updates.othelloAnswerMode !== undefined) updateData.othello_answer_mode = updates.othelloAnswerMode;
     if (updates.ticTacToeAnswerMode !== undefined) updateData.tic_tac_toe_answer_mode = updates.ticTacToeAnswerMode;
+    if (updates.connectFourAnswerMode !== undefined) updateData.connect_four_answer_mode = updates.connectFourAnswerMode;
+    if (updates.jeopardyAnswerMode !== undefined) updateData.jeopardy_answer_mode = updates.jeopardyAnswerMode;
+    if (updates.jeopardyTimeLimit !== undefined) updateData.jeopardy_time_limit = updates.jeopardyTimeLimit;
+    if (updates.blokusAnswerMode !== undefined) updateData.blokus_answer_mode = updates.blokusAnswerMode;
+    if (updates.blokusTimeLimit !== undefined) updateData.blokus_time_limit = updates.blokusTimeLimit;
+    if (updates.gapFillGapCount !== undefined) updateData.gap_fill_gap_count = updates.gapFillGapCount;
+    if (updates.gapFillSummaryLength !== undefined) updateData.gap_fill_summary_length = updates.gapFillSummaryLength;
+    if (updates.requirePrerequisiteGames !== undefined) updateData.require_prerequisite_games = updates.requirePrerequisiteGames;
+    if (updates.allowWordListDownload !== undefined) updateData.allow_word_list_download = updates.allowWordListDownload;
 
     const { error } = await supabase
       .from('game_links')

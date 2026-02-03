@@ -5,8 +5,9 @@
 function getSupabaseUrl(): string {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!url) {
-    console.error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable');
-    return '';
+    const errorMessage = 'Missing NEXT_PUBLIC_SUPABASE_URL environment variable. Please check your .env.local file.';
+    console.error(errorMessage);
+    throw new Error(errorMessage);
   }
   return url;
 }
@@ -15,8 +16,9 @@ function getSupabaseAnonKey(): string {
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY || 
                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!key) {
-    console.error('Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable');
-    return '';
+    const errorMessage = 'Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable. Please check your .env.local file.';
+    console.error(errorMessage);
+    throw new Error(errorMessage);
   }
   return key;
 }
@@ -35,9 +37,13 @@ function getSupabaseServiceRoleKey(): string {
 }
 
 export const supabaseConfig = {
-  url: getSupabaseUrl(),
-  anonKey: getSupabaseAnonKey(),
-  // Lazy getter to prevent client-side access attempts
+  // Lazy getters to ensure environment variables are accessed only when needed
+  get url(): string {
+    return getSupabaseUrl();
+  },
+  get anonKey(): string {
+    return getSupabaseAnonKey();
+  },
   get serviceRoleKey(): string {
     return getSupabaseServiceRoleKey();
   }

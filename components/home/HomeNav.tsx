@@ -49,7 +49,7 @@ export function HomeNav() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="h-6 w-6 text-primary" />
-            <span className="text-xl font-heading font-bold">VocabArena</span>
+            <span className="text-xl font-heading font-bold">Quizzy</span>
           </div>
           <div className="flex items-center gap-3">
             {isChecking ? (

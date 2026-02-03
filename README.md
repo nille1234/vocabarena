@@ -1,4 +1,4 @@
-# VocabArena 🎮
+# Quizzy 🎮
 
 A competitive vocabulary learning platform designed for 18-year-olds with team-based games, real-time competition, and engaging gamification features.
 

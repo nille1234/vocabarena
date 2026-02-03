@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState, useEffect } from 'react';
 
 /**
  * Generate a tab session ID on the client side
@@ -22,15 +22,15 @@ function generateClientTabSessionId(): string {
 /**
  * Hook to manage tab-scoped session ID
  * This ID is stored only in memory and is unique per browser tab
+ * Uses useState + useEffect to avoid hydration mismatches
  */
 export function useTabSession() {
-  // Generate the session ID immediately using useMemo to ensure it's only created once
-  const tabSessionId = useMemo(() => {
-    // Only generate on client side
-    if (typeof window === 'undefined') {
-      return null;
-    }
-    return generateClientTabSessionId();
+  // Start with null to match server-side rendering
+  const [tabSessionId, setTabSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Generate session ID only after component mounts on client
+    setTabSessionId(generateClientTabSessionId());
   }, []);
 
   return tabSessionId;

@@ -1,6 +1,6 @@
 # Email Confirmation Setup Guide
 
-This guide explains how to configure Supabase email templates to work correctly with your VocabArena application.
+This guide explains how to configure Supabase email templates to work correctly with your Quizzy application.
 
 ## The Problem
 
@@ -48,7 +48,7 @@ Confirm Your Signup
 1. In Supabase Dashboard, go to **Authentication** → **URL Configuration**
 2. Set your **Site URL**:
    - **Local Development**: `http://localhost:3000`
-   - **Production**: Your actual domain (e.g., `https://vocabarena.com`)
+   - **Production**: Your actual domain (e.g., `https://quizzy.com`)
 
 ### 4. Add Redirect URLs to Allow List
 

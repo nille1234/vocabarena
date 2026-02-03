@@ -243,6 +243,16 @@ export function GameLinksTab({ gameLinks, onEdit, onRefresh }: GameLinksTabProps
                     Word Search Answers
                   </Button>
                 )}
+                {link.enabledGames.includes('gap-fill') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`/teacher/game/${link.code}/gap-fill-answers`)}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Gap Text Answers
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"

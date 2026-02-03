@@ -7,14 +7,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle2, Copy, Check, Eye } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CheckCircle2, Copy, Check, Eye, Info } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface LinkConfigurationStepProps {
   linkName: string;
   onLinkNameChange: (name: string) => void;
   generatedCode: string;
   generatedLink: string;
+  requirePrerequisiteGames?: boolean;
+  onRequirePrerequisiteGamesChange?: (value: boolean) => void;
+  allowWordListDownload?: boolean;
+  onAllowWordListDownloadChange?: (value: boolean) => void;
   
   // Summary data
   vocabularyName: string;
@@ -27,6 +38,10 @@ export function LinkConfigurationStep({
   onLinkNameChange,
   generatedCode,
   generatedLink,
+  requirePrerequisiteGames = false,
+  onRequirePrerequisiteGamesChange,
+  allowWordListDownload = false,
+  onAllowWordListDownloadChange,
   vocabularyName,
   wordCount,
   selectedGamesCount,
@@ -56,6 +71,68 @@ export function LinkConfigurationStep({
             <p className="text-xs text-muted-foreground">
               This name helps you identify the link in your dashboard
             </p>
+          </div>
+
+          <div className="flex items-start space-x-2 rounded-lg border border-border/50 bg-muted/30 p-4">
+            <Checkbox
+              id="requirePrerequisites"
+              checked={requirePrerequisiteGames}
+              onCheckedChange={(checked) => onRequirePrerequisiteGamesChange?.(checked as boolean)}
+            />
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor="requirePrerequisites"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  Require Match and Flashcards completion first
+                </Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Students must complete Match (once) and Flashcards (twice) before accessing other games. Progress is tracked in their browser.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Other games will be locked until students complete both prerequisite games
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start space-x-2 rounded-lg border border-border/50 bg-muted/30 p-4">
+            <Checkbox
+              id="allowWordListDownload"
+              checked={allowWordListDownload}
+              onCheckedChange={(checked) => onAllowWordListDownloadChange?.(checked as boolean)}
+            />
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor="allowWordListDownload"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  Allow students to download word list
+                </Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Students can download a Word document with the vocabulary list (German-Danish or English-Danish format)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Provides a downloadable vocabulary reference for homework practice
+              </p>
+            </div>
           </div>
 
           <Card className="border-border/50 bg-muted/50">

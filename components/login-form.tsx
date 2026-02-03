@@ -132,7 +132,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
                 </div>
               )}
               <Button type="submit" className="w-full" disabled={isLoading || !tabSessionId}>
-                {!tabSessionId ? 'Initializing...' : isLoading ? 'Logging in...' : 'Login'}
+                {isLoading ? 'Logging in...' : 'Login'}
               </Button>
             </div>
           </form>

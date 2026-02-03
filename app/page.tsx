@@ -26,7 +26,7 @@ export default function HomePage() {
           <h1 className="text-5xl md:text-7xl font-heading font-bold tracking-tight">
             Welcome to{" "}
             <span className="bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
-              VocabArena
+              Quizzy
             </span>
           </h1>
 
@@ -216,7 +216,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-border/50 mt-24 py-8">
         <div className="container mx-auto px-4 text-center text-muted-foreground">
-          <p>VocabArena - Interactive Vocabulary Learning Platform</p>
+          <p>Quizzy - Interactive Vocabulary Learning Platform</p>
           <p className="text-sm mt-2">Built with Next.js, Tailwind CSS, and shadcn/ui</p>
         </div>
       </footer>

@@ -46,6 +46,8 @@ interface VocabularySelectionStepProps {
   // Existing vocabulary props
   selectedListId: string;
   onSelectedListIdChange: (id: string) => void;
+  existingLists: VocabularyList[];
+  onExistingListsChange: (lists: VocabularyList[]) => void;
 }
 
 export function VocabularySelectionStep({
@@ -61,13 +63,14 @@ export function VocabularySelectionStep({
   onParsedCardsChange,
   selectedListId,
   onSelectedListIdChange,
+  existingLists,
+  onExistingListsChange,
 }: VocabularySelectionStepProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [parseError, setParseError] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   const [pastedText, setPastedText] = useState("");
-  const [existingLists, setExistingLists] = useState<VocabularyList[]>([]);
   const [loadingLists, setLoadingLists] = useState(false);
 
   useEffect(() => {
@@ -80,7 +83,7 @@ export function VocabularySelectionStep({
     setLoadingLists(true);
     try {
       const lists = await getAllVocabularyLists();
-      setExistingLists(lists);
+      onExistingListsChange(lists);
     } catch (error) {
       console.error('Error loading vocabulary lists:', error);
       toast.error('Failed to load vocabulary lists');

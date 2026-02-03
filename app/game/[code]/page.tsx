@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
-import { BookOpen, ArrowLeft, Sparkles, Play, AlertCircle, LayoutDashboard } from "lucide-react";
+import { BookOpen, ArrowLeft, Sparkles, Play, AlertCircle, LayoutDashboard, Lock, CheckCircle } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useGameStore } from "@/lib/store/gameStore";
 import { checkGameAccessClient } from "@/lib/supabase/gameAccess.client";
 import { GameMode } from "@/types/game";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase/client";
+import { getProgress, arePrerequisitesComplete } from "@/lib/utils/gameProgress";
+import { toast } from "sonner";
 
 export default function GameSelectorPage() {
   const params = useParams();
@@ -24,9 +26,31 @@ export default function GameSelectorPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isTeacher, setIsTeacher] = useState(false);
+  const [prerequisitesComplete, setPrerequisitesComplete] = useState(false);
+  const [requirePrerequisiteGames, setRequirePrerequisiteGames] = useState(false);
+  const [gameProgress, setGameProgress] = useState({
+    matchCompleted: false,
+    flashcardsCompleted: false,
+  });
   
   // Get session from store by code
   const currentSession = session?.code === gameCode ? session : getSessionByCode(gameCode);
+
+  // Check prerequisites completion
+  useEffect(() => {
+    if (gameCode) {
+      const checkProgress = async () => {
+        const progress = await getProgress(gameCode);
+        setGameProgress({
+          matchCompleted: progress.matchCompleted,
+          flashcardsCompleted: progress.flashcardsCompleted,
+        });
+        const complete = await arePrerequisitesComplete(gameCode);
+        setPrerequisitesComplete(complete);
+      };
+      checkProgress();
+    }
+  }, [gameCode]);
   
   // Check if user is a teacher
   useEffect(() => {
@@ -48,9 +72,9 @@ export default function GameSelectorPage() {
     checkTeacherStatus();
   }, []);
   
-  // Fetch enabled games for this game code
+  // Fetch enabled games and prerequisite setting for this game code
   useEffect(() => {
-    async function fetchEnabledGames() {
+    async function fetchGameLinkData() {
       setLoading(true);
       setError(null);
       
@@ -61,12 +85,24 @@ export default function GameSelectorPage() {
         setEnabledGames([]);
       } else {
         setEnabledGames(result.enabledGames);
+        
+        // Fetch the game link to get requirePrerequisiteGames setting
+        const supabase = createClient();
+        const { data: gameLink } = await supabase
+          .from('game_links')
+          .select('require_prerequisite_games')
+          .eq('code', gameCode)
+          .single();
+        
+        if (gameLink) {
+          setRequirePrerequisiteGames(gameLink.require_prerequisite_games || false);
+        }
       }
       
       setLoading(false);
     }
     
-    fetchEnabledGames();
+    fetchGameLinkData();
   }, [gameCode]);
   
   // Prevent hydration mismatch by only rendering after mount
@@ -147,13 +183,6 @@ export default function GameSelectorPage() {
       color: 'from-emerald-500/20 to-emerald-600/20'
     },
     { 
-      id: 'hex', 
-      name: 'Hex', 
-      icon: '⬡',
-      description: 'Connect your sides',
-      color: 'from-sky-500/20 to-sky-600/20'
-    },
-    { 
       id: 'crossword', 
       name: 'Crossword', 
       icon: '📋',
@@ -199,9 +228,19 @@ export default function GameSelectorPage() {
   }
 
   // Filter game modes to only show enabled ones
-  const availableGameModes = gameModes.filter(mode => 
-    enabledGames.includes(mode.id as GameMode)
-  );
+  // IMPORTANT: If prerequisites are required, always include match and flashcards
+  const availableGameModes = gameModes.filter(mode => {
+    const isEnabled = enabledGames.includes(mode.id as GameMode);
+    const isPrerequisite = mode.id === 'match' || mode.id === 'flashcards';
+    
+    // If prerequisites are required, always show match and flashcards
+    if (requirePrerequisiteGames && isPrerequisite) {
+      return true;
+    }
+    
+    // For other games: show if enabled AND (no prerequisites required OR prerequisites complete OR user is teacher)
+    return isEnabled && (!requirePrerequisiteGames || prerequisitesComplete || isTeacher);
+  });
 
   // Show message if no games are enabled
   if (availableGameModes.length === 0) {
@@ -228,9 +267,46 @@ export default function GameSelectorPage() {
     );
   }
 
+  const isGameLocked = (modeId: string): boolean => {
+    // Teachers can access all games
+    if (isTeacher) return false;
+    
+    // If prerequisites are not required for this game link, nothing is locked
+    if (!requirePrerequisiteGames) return false;
+    
+    // Match and Flashcards are never locked (they're the prerequisites)
+    if (modeId === 'match' || modeId === 'flashcards') return false;
+    
+    // All other games require prerequisites to be completed
+    return !prerequisitesComplete;
+  };
+
   const handleSelectMode = (modeId: string) => {
+    // Check if game is locked
+    if (isGameLocked(modeId)) {
+      const matchStatus = gameProgress.matchCompleted ? '✓' : '✗';
+      const flashcardsStatus = gameProgress.flashcardsCompleted ? '✓' : '✗';
+      
+      toast.error('Complete prerequisites first', {
+        description: `Match: ${matchStatus} | Flashcards: ${flashcardsStatus}`,
+      });
+      return;
+    }
+    
     router.push(`/game/${gameCode}/${modeId}`);
   };
+
+  // Sort games: flashcards and match first, then all other games
+  const sortedGameModes = [...availableGameModes].sort((a, b) => {
+    const aIsPrerequisite = a.id === 'flashcards' || a.id === 'match';
+    const bIsPrerequisite = b.id === 'flashcards' || b.id === 'match';
+    
+    // If both are prerequisites or both are not, maintain original order
+    if (aIsPrerequisite === bIsPrerequisite) return 0;
+    
+    // Prerequisites come first
+    return aIsPrerequisite ? -1 : 1;
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
@@ -314,6 +390,50 @@ export default function GameSelectorPage() {
             </Card>
           </motion.div>
 
+          {/* Prerequisites Progress (only show if not teacher, prerequisites required, and not complete) */}
+          {!isTeacher && requirePrerequisiteGames && !prerequisitesComplete && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.15 }}
+            >
+              <Card className="border-orange-500/50 bg-gradient-to-br from-orange-500/10 to-amber-500/10">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Lock className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold mb-2">Complete Match (1x) and Flashcards (1x) to Unlock All Games</p>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          {gameProgress.matchCompleted ? (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/50" />
+                          )}
+                          <span className={gameProgress.matchCompleted ? 'text-green-600 font-medium' : 'text-muted-foreground'}>
+                            Match: {gameProgress.matchCompleted ? 'Completed ✓' : 'Not started'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {gameProgress.flashcardsCompleted ? (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/50" />
+                          )}
+                          <span className={gameProgress.flashcardsCompleted ? 'text-green-600 font-medium' : 'text-muted-foreground'}>
+                            Flashcards: {gameProgress.flashcardsCompleted ? 'Completed ✓' : 'Not started'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
           {/* Game Modes Grid */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -321,51 +441,78 @@ export default function GameSelectorPage() {
             transition={{ duration: 0.5, delay: 0.2 }}
           >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {availableGameModes.map((mode, index) => (
-                <motion.div
-                  key={mode.id}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.3, delay: 0.3 + index * 0.05 }}
-                >
-                  <Card 
-                    className={`
-                      border-2 border-border/50 cursor-pointer transition-all duration-300 
-                      hover:scale-105 hover:border-primary/50 hover:shadow-lg
-                      bg-gradient-to-br ${mode.color}
-                    `}
-                    onClick={() => handleSelectMode(mode.id)}
+              {sortedGameModes.map((mode, index) => {
+                const locked = isGameLocked(mode.id);
+                
+                return (
+                  <motion.div
+                    key={mode.id}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3, delay: 0.3 + index * 0.05 }}
                   >
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div className="text-5xl mb-2">{mode.icon}</div>
-                        <Badge variant="secondary" className="text-xs">
-                          Play
-                        </Badge>
-                      </div>
-                      <CardTitle className="font-heading text-xl">
-                        {mode.name}
-                      </CardTitle>
-                      <CardDescription className="text-sm">
-                        {mode.description}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <Button 
-                        className="w-full" 
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectMode(mode.id);
-                        }}
-                      >
-                        <Play className="mr-2 h-4 w-4" />
-                        Start Game
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
+                    <Card 
+                      className={`
+                        border-2 transition-all duration-300 
+                        bg-gradient-to-br ${mode.color}
+                        ${locked 
+                          ? 'opacity-50 cursor-not-allowed border-border/30' 
+                          : 'border-border/50 cursor-pointer hover:scale-105 hover:border-primary/50 hover:shadow-lg'
+                        }
+                      `}
+                      onClick={() => handleSelectMode(mode.id)}
+                    >
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <div className="text-5xl mb-2 relative">
+                            {mode.icon}
+                            {locked && (
+                              <div className="absolute -top-1 -right-1 bg-background rounded-full p-1">
+                                <Lock className="h-4 w-4 text-orange-600" />
+                              </div>
+                            )}
+                          </div>
+                          <Badge 
+                            variant={locked ? "outline" : "secondary"} 
+                            className={`text-xs ${locked ? 'border-orange-500/50 text-orange-600' : ''}`}
+                          >
+                            {locked ? 'Locked' : 'Play'}
+                          </Badge>
+                        </div>
+                        <CardTitle className="font-heading text-xl">
+                          {mode.name}
+                        </CardTitle>
+                        <CardDescription className="text-sm">
+                          {mode.description}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Button 
+                          className="w-full" 
+                          variant="outline"
+                          disabled={locked}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectMode(mode.id);
+                          }}
+                        >
+                          {locked ? (
+                            <>
+                              <Lock className="mr-2 h-4 w-4" />
+                              Locked
+                            </>
+                          ) : (
+                            <>
+                              <Play className="mr-2 h-4 w-4" />
+                              Start Game
+                            </>
+                          )}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                );
+              })}
             </div>
           </motion.div>
 

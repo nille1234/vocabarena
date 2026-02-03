@@ -8,6 +8,9 @@ interface SoundEffects {
   playCombo: () => void;
   playBeep: () => void;
   playVictory: () => void;
+  playFlip: () => void;
+  playKnown: () => void;
+  playReview: () => void;
   isMuted: boolean;
   toggleMute: () => void;
 }
@@ -93,6 +96,31 @@ export function useSoundEffects(): SoundEffects {
     });
   }, [isMuted, playSound]);
 
+  const playFlip = useCallback(() => {
+    if (isMuted || !audioContextRef.current) return;
+    
+    // Soft whoosh sound for card flip
+    playSound(440, 0.1, 'sine', 0.2);
+  }, [isMuted, playSound]);
+
+  const playKnown = useCallback(() => {
+    if (isMuted || !audioContextRef.current) return;
+    
+    // Cheerful ascending tones for "I know this"
+    [523, 659, 784].forEach((freq, i) => {
+      setTimeout(() => {
+        playSound(freq, 0.15, 'sine', 0.25);
+      }, i * 80);
+    });
+  }, [isMuted, playSound]);
+
+  const playReview = useCallback(() => {
+    if (isMuted || !audioContextRef.current) return;
+    
+    // Neutral single tone for "I don't know"
+    playSound(350, 0.15, 'sine', 0.2);
+  }, [isMuted, playSound]);
+
   const toggleMute = useCallback(() => {
     setIsMuted(prev => !prev);
   }, []);
@@ -103,6 +131,9 @@ export function useSoundEffects(): SoundEffects {
     playCombo,
     playBeep,
     playVictory,
+    playFlip,
+    playKnown,
+    playReview,
     isMuted,
     toggleMute,
   };

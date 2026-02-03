@@ -10,6 +10,13 @@ export interface GameAccessResult {
     isActive: boolean;
     othelloAnswerMode?: 'text-input' | 'multiple-choice';
     ticTacToeAnswerMode?: 'text-input' | 'multiple-choice';
+    connectFourAnswerMode?: 'text-input' | 'multiple-choice';
+    jeopardyAnswerMode?: 'text-input' | 'multiple-choice';
+    jeopardyTimeLimit?: number;
+    blokusAnswerMode?: 'text-input' | 'multiple-choice';
+    blokusTimeLimit?: number;
+    gapFillGapCount?: number;
+    gapFillSummaryLength?: number;
   };
   error?: string;
 }

@@ -50,13 +50,6 @@ export const ALL_GAME_MODES: {
     color: 'from-emerald-500/20 to-emerald-600/20'
   },
   { 
-    id: 'hex', 
-    name: 'Hex', 
-    icon: '⬡', 
-    description: 'Connect your sides',
-    color: 'from-sky-500/20 to-sky-600/20'
-  },
-  { 
     id: 'crossword', 
     name: 'Crossword', 
     icon: '📋', 
@@ -83,5 +76,40 @@ export const ALL_GAME_MODES: {
     icon: '⚔️', 
     description: 'Two-player word search race',
     color: 'from-red-500/20 to-blue-500/20'
+  },
+  { 
+    id: 'flashcards', 
+    name: 'Flash Cards', 
+    icon: '🎴', 
+    description: 'Study with interactive flash cards',
+    color: 'from-cyan-500/20 to-cyan-600/20'
+  },
+  { 
+    id: 'gap-fill', 
+    name: 'Gap Text', 
+    icon: '📝', 
+    description: 'Fill in missing words in a text',
+    color: 'from-amber-500/20 to-amber-600/20'
+  },
+  { 
+    id: 'connect-four', 
+    name: 'Connect Four', 
+    icon: '🔴', 
+    description: 'Translate to drop discs and connect four',
+    color: 'from-red-500/20 to-yellow-500/20'
+  },
+  { 
+    id: 'jeopardy', 
+    name: 'Jeopardy', 
+    icon: '💰', 
+    description: 'Answer questions in themed categories',
+    color: 'from-yellow-500/20 to-orange-500/20'
+  },
+  { 
+    id: 'blokus', 
+    name: 'Blokus', 
+    icon: '🧩', 
+    description: 'Strategic tile placement game',
+    color: 'from-violet-500/20 to-purple-500/20'
   },
 ];

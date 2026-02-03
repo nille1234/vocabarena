@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the comprehensive security architecture implemented for VocabArena, focusing on authentication, session management, and security hardening for teacher accounts while maintaining anonymous access for students via game links.
+This document describes the comprehensive security architecture implemented for Quizzy, focusing on authentication, session management, and security hardening for teacher accounts while maintaining anonymous access for students via game links.
 
 ## Table of Contents
 
