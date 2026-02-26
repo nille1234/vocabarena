@@ -64,13 +64,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the new user with admin API
-    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+    // Create the user with the provided password
+    const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Auto-confirm email
+      email_confirm: true, // Auto-confirm email since you're manually inviting
       user_metadata: {
         invited_by: currentUser.id,
+        role: 'teacher',
       },
     });
 
@@ -82,40 +83,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!newUser.user) {
+    if (!userData.user) {
       return NextResponse.json(
         { error: 'Failed to create user' },
         { status: 500 }
       );
     }
 
-    // Create user profile
+    // Create user profile with password change required
     const { error: profileInsertError } = await supabaseAdmin
       .from('user_profiles')
       .insert({
-        id: newUser.user.id,
+        id: userData.user.id,
         role: 'teacher',
-        password_change_required: true,
+        password_change_required: true, // Force password change on first login
         created_by: currentUser.id,
       });
 
     if (profileInsertError) {
       console.error('Error creating user profile:', profileInsertError);
       // Try to delete the auth user if profile creation failed
-      await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
+      await supabaseAdmin.auth.admin.deleteUser(userData.user.id);
       return NextResponse.json(
         { error: 'Failed to create user profile' },
         { status: 500 }
       );
     }
 
-    // Send invitation email (Supabase will send a confirmation email automatically)
-    // You can customize this by setting up email templates in Supabase
-
     return NextResponse.json({
       success: true,
-      userId: newUser.user.id,
-      email: newUser.user.email,
+      userId: userData.user.id,
+      email: userData.user.email,
+      message: 'Teacher account created successfully. Please share the credentials with the teacher.',
     });
   } catch (error) {
     console.error('Error in invite-teacher route:', error);

@@ -56,8 +56,6 @@ export function EditGameLinkDialog({
   const [connectFourAnswerMode, setConnectFourAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
   const [jeopardyAnswerMode, setJeopardyAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
   const [jeopardyTimeLimit, setJeopardyTimeLimit] = useState<number>(30);
-  const [blokusAnswerMode, setBlokusAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
-  const [blokusTimeLimit, setBlokusTimeLimit] = useState<number | null>(null);
   const [gapFillGapCount, setGapFillGapCount] = useState<number>(15);
   const [gapFillSummaryLength, setGapFillSummaryLength] = useState<number>(250);
   const [requirePrerequisiteGames, setRequirePrerequisiteGames] = useState<boolean>(false);
@@ -81,8 +79,6 @@ export function EditGameLinkDialog({
       setConnectFourAnswerMode(gameLink.connectFourAnswerMode || 'text-input');
       setJeopardyAnswerMode(gameLink.jeopardyAnswerMode || 'text-input');
       setJeopardyTimeLimit(gameLink.jeopardyTimeLimit || 30);
-      setBlokusAnswerMode(gameLink.blokusAnswerMode || 'text-input');
-      setBlokusTimeLimit(gameLink.blokusTimeLimit || null);
       setGapFillGapCount(gameLink.gapFillGapCount || 15);
       setGapFillSummaryLength(gameLink.gapFillSummaryLength || 250);
       setRequirePrerequisiteGames(gameLink.requirePrerequisiteGames || false);
@@ -158,8 +154,6 @@ export function EditGameLinkDialog({
         connectFourAnswerMode: selectedGames.includes('connect-four') ? connectFourAnswerMode : undefined,
         jeopardyAnswerMode: selectedGames.includes('jeopardy') ? jeopardyAnswerMode : undefined,
         jeopardyTimeLimit: selectedGames.includes('jeopardy') ? jeopardyTimeLimit : undefined,
-        blokusAnswerMode: selectedGames.includes('blokus') ? blokusAnswerMode : undefined,
-        blokusTimeLimit: selectedGames.includes('blokus') ? blokusTimeLimit : undefined,
         gapFillGapCount: selectedGames.includes('gap-fill') ? gapFillGapCount : undefined,
         gapFillSummaryLength: selectedGames.includes('gap-fill') ? gapFillSummaryLength : undefined,
         requirePrerequisiteGames: requirePrerequisiteGames,
@@ -310,10 +304,6 @@ export function EditGameLinkDialog({
               onJeopardyAnswerModeChange={setJeopardyAnswerMode}
               jeopardyTimeLimit={jeopardyTimeLimit}
               onJeopardyTimeLimitChange={setJeopardyTimeLimit}
-              blokusAnswerMode={blokusAnswerMode}
-              onBlokusAnswerModeChange={setBlokusAnswerMode}
-              blokusTimeLimit={blokusTimeLimit}
-              onBlokusTimeLimitChange={setBlokusTimeLimit}
               gapFillGapCount={gapFillGapCount}
               onGapFillGapCountChange={setGapFillGapCount}
               gapFillSummaryLength={gapFillSummaryLength}

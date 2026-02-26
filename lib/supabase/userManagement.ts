@@ -9,6 +9,9 @@ export interface UserProfile {
   createdAt: Date;
   updatedAt: Date;
   lastSignInAt?: Date;
+  vocabularyListCount?: number;
+  gameLinkCount?: number;
+  classCount?: number;
 }
 
 export async function getCurrentUserProfile(): Promise<UserProfile | null> {
@@ -64,10 +67,14 @@ export async function getAllUsers(): Promise<UserProfile[]> {
     }
 
     // Call API route to get all users with emails
-    const response = await fetch('/api/users', {
+    // Add cache busting with timestamp to ensure fresh data
+    const response = await fetch(`/api/users?t=${Date.now()}`, {
       headers: {
         'Authorization': `Bearer ${session.access_token}`,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
       },
+      cache: 'no-store',
     });
 
     if (!response.ok) {
@@ -87,6 +94,9 @@ export async function getAllUsers(): Promise<UserProfile[]> {
       createdAt: new Date(user.createdAt),
       updatedAt: new Date(user.updatedAt),
       lastSignInAt: user.lastSignInAt ? new Date(user.lastSignInAt) : undefined,
+      vocabularyListCount: user.vocabularyListCount || 0,
+      gameLinkCount: user.gameLinkCount || 0,
+      classCount: user.classCount || 0,
     }));
   } catch (error) {
     console.error('Error fetching all users:', error);

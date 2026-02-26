@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CheckCircle2, Copy, Check, Eye, Info } from "lucide-react";
 import { toast } from "sonner";
+import { GameMode } from "@/types/game";
 import {
   Tooltip,
   TooltipContent,

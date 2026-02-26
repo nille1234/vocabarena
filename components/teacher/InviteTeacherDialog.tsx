@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 interface InviteTeacherDialogProps {
@@ -29,7 +29,6 @@ export function InviteTeacherDialog({
 }: InviteTeacherDialogProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,7 +59,7 @@ export function InviteTeacherDialog({
         throw new Error(data.error || 'Failed to invite teacher');
       }
 
-      toast.success(`Teacher invited successfully! Email: ${email}`);
+      toast.success(`Teacher account created! Email: ${email} - Please share the credentials with the teacher.`);
       setEmail("");
       setPassword("");
       onOpenChange(false);
@@ -73,23 +72,13 @@ export function InviteTeacherDialog({
     }
   };
 
-  const getPasswordStrength = (pwd: string) => {
-    if (pwd.length === 0) return { strength: 0, label: '', color: '' };
-    if (pwd.length < 6) return { strength: 1, label: 'Weak', color: 'text-red-500' };
-    if (pwd.length < 10) return { strength: 2, label: 'Fair', color: 'text-orange-500' };
-    if (pwd.length < 14) return { strength: 3, label: 'Good', color: 'text-yellow-500' };
-    return { strength: 4, label: 'Strong', color: 'text-green-500' };
-  };
-
-  const passwordStrength = getPasswordStrength(password);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Invite Teacher</DialogTitle>
           <DialogDescription>
-            Create a new teacher account. The teacher will be required to change their password on first login.
+            Create a new teacher account with a temporary password. You'll need to share the credentials with the teacher manually. They will be required to change their password on first login.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -108,52 +97,18 @@ export function InviteTeacherDialog({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="password">Temporary Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter a temporary password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  disabled={isLoading}
-                  className="pr-10"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={isLoading}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-              {password && (
-                <div className="flex items-center gap-2 text-sm">
-                  <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all ${
-                        passwordStrength.strength === 1 ? 'bg-red-500 w-1/4' :
-                        passwordStrength.strength === 2 ? 'bg-orange-500 w-2/4' :
-                        passwordStrength.strength === 3 ? 'bg-yellow-500 w-3/4' :
-                        'bg-green-500 w-full'
-                      }`}
-                    />
-                  </div>
-                  <span className={passwordStrength.color}>
-                    {passwordStrength.label}
-                  </span>
-                </div>
-              )}
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter a temporary password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                disabled={isLoading}
+              />
               <p className="text-xs text-muted-foreground">
-                The teacher will receive an email and must change this password on first login.
+                The teacher will be required to change this password on their first login.
               </p>
             </div>
           </div>

@@ -71,11 +71,25 @@ export function UserManagementTab({ users, currentUserId, onInviteTeacher, onUse
         setUserToDelete(null);
         onUserDeleted?.();
       } else {
-        toast({
-          title: "Error",
-          description: result.error || "Failed to delete user",
-          variant: "destructive",
-        });
+        // Check if the error is "user not found" - this means they're already deleted
+        const isNotFoundError = result.error?.toLowerCase().includes('not found') || 
+                                result.error?.toLowerCase().includes('already been deleted');
+        
+        if (isNotFoundError) {
+          toast({
+            title: "User already removed",
+            description: `${userToDelete.email} was already deleted. Refreshing the list...`,
+          });
+          setUserToDelete(null);
+          // Still refresh the list to remove the ghost entry
+          onUserDeleted?.();
+        } else {
+          toast({
+            title: "Error",
+            description: result.error || "Failed to delete user",
+            variant: "destructive",
+          });
+        }
       }
     } catch (error) {
       toast({
@@ -116,6 +130,9 @@ export function UserManagementTab({ users, currentUserId, onInviteTeacher, onUse
             <TableHead>Email</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead className="text-center">Lists</TableHead>
+            <TableHead className="text-center">Links</TableHead>
+            <TableHead className="text-center">Classes</TableHead>
             <TableHead>Created</TableHead>
             <TableHead>Last Sign In</TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
@@ -124,7 +141,7 @@ export function UserManagementTab({ users, currentUserId, onInviteTeacher, onUse
         <TableBody>
           {userList.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                 {showInviteStatus ? 'No pending invitations' : 'No active users'}
               </TableCell>
             </TableRow>
@@ -172,6 +189,21 @@ export function UserManagementTab({ users, currentUserId, onInviteTeacher, onUse
                       Active
                     </Badge>
                   )}
+                </TableCell>
+                <TableCell className="text-center">
+                  <span className={user.vocabularyListCount === 0 ? 'text-muted-foreground' : 'font-medium'}>
+                    {user.vocabularyListCount || 0}
+                  </span>
+                </TableCell>
+                <TableCell className="text-center">
+                  <span className={user.gameLinkCount === 0 ? 'text-muted-foreground' : 'font-medium'}>
+                    {user.gameLinkCount || 0}
+                  </span>
+                </TableCell>
+                <TableCell className="text-center">
+                  <span className={user.classCount === 0 ? 'text-muted-foreground' : 'font-medium'}>
+                    {user.classCount || 0}
+                  </span>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
@@ -258,28 +290,30 @@ export function UserManagementTab({ users, currentUserId, onInviteTeacher, onUse
                 ? 'Cancel Invitation' 
                 : 'Delete User'}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {userToDelete && isPendingInvite(userToDelete) ? (
-                <>
-                  Are you sure you want to cancel the invitation for{' '}
-                  <span className="font-semibold">{userToDelete.email}</span>?
-                  <br /><br />
-                  This will remove the pending invitation and the user will not be able to access the system.
-                </>
-              ) : (
-                <>
-                  Are you sure you want to delete{' '}
-                  <span className="font-semibold">{userToDelete?.email}</span>?
-                  <br /><br />
-                  <span className="text-destructive font-semibold">This action cannot be undone.</span>
-                  {' '}This will permanently delete the user account and all associated data including:
-                  <ul className="list-disc list-inside mt-2 space-y-1">
-                    <li>Vocabulary lists</li>
-                    <li>Game links</li>
-                    <li>All other user data</li>
-                  </ul>
-                </>
-              )}
+            <AlertDialogDescription asChild>
+              <div>
+                {userToDelete && isPendingInvite(userToDelete) ? (
+                  <>
+                    Are you sure you want to cancel the invitation for{' '}
+                    <span className="font-semibold">{userToDelete.email}</span>?
+                    <br /><br />
+                    This will remove the pending invitation and the user will not be able to access the system.
+                  </>
+                ) : (
+                  <>
+                    Are you sure you want to delete{' '}
+                    <span className="font-semibold">{userToDelete?.email}</span>?
+                    <br /><br />
+                    <span className="text-destructive font-semibold">This action cannot be undone.</span>
+                    {' '}This will permanently delete the user account and all associated data including:
+                    <ul className="list-disc list-inside mt-2 space-y-1">
+                      <li>Vocabulary lists</li>
+                      <li>Game links</li>
+                      <li>All other user data</li>
+                    </ul>
+                  </>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

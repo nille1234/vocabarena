@@ -105,11 +105,4 @@ export const ALL_GAME_MODES: {
     description: 'Answer questions in themed categories',
     color: 'from-yellow-500/20 to-orange-500/20'
   },
-  { 
-    id: 'blokus', 
-    name: 'Blokus', 
-    icon: '🧩', 
-    description: 'Strategic tile placement game',
-    color: 'from-violet-500/20 to-purple-500/20'
-  },
 ];

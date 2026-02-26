@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,7 +15,8 @@ import { useRouter } from "next/navigation";
 import { generateGameCode } from "@/lib/utils/gameLogic";
 import { 
   createVocabularyList, 
-  createGameLink 
+  createGameLink,
+  getVocabularyListWords
 } from "@/lib/supabase/vocabularyManagement";
 import { toast } from "sonner";
 import { StepIndicator } from "./dialog-steps/StepIndicator";
@@ -27,9 +28,12 @@ interface CreateGameLinkDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  defaultClassId?: string;
+  filterToListIds?: string[];
+  preSelectedListIds?: string[];
 }
 
-export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGameLinkDialogProps) {
+export function CreateGameLinkDialog({ open, onOpenChange, onSuccess, defaultClassId, filterToListIds, preSelectedListIds }: CreateGameLinkDialogProps) {
   const router = useRouter();
   
   // Step management
@@ -54,8 +58,6 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
   const [connectFourAnswerMode, setConnectFourAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
   const [jeopardyAnswerMode, setJeopardyAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
   const [jeopardyTimeLimit, setJeopardyTimeLimit] = useState(30);
-  const [blokusAnswerMode, setBlokusAnswerMode] = useState<'text-input' | 'multiple-choice'>('text-input');
-  const [blokusTimeLimit, setBlokusTimeLimit] = useState<number | null>(null);
   const [gapFillGapCount, setGapFillGapCount] = useState(15);
   const [gapFillSummaryLength, setGapFillSummaryLength] = useState(250);
   
@@ -68,6 +70,49 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
   
   // Processing
   const [isCreating, setIsCreating] = useState(false);
+
+  // Auto-load pre-selected lists and skip to game selection
+  useEffect(() => {
+    if (open && preSelectedListIds && preSelectedListIds.length > 0) {
+      loadPreSelectedLists();
+    }
+  }, [open, preSelectedListIds]);
+
+  const loadPreSelectedLists = async () => {
+    try {
+      // Fetch words from all pre-selected lists
+      const allWords: string[] = [];
+      for (const listId of preSelectedListIds!) {
+        const words = await getVocabularyListWords(listId);
+        allWords.push(...words);
+      }
+
+      // Remove duplicates (case-insensitive)
+      const uniqueWordsSet = new Set(allWords.map(w => w.trim().toLowerCase()));
+      const uniqueWords = Array.from(uniqueWordsSet);
+      
+      // Randomize order
+      const shuffled = uniqueWords.sort(() => Math.random() - 0.5);
+      
+      // Convert to VocabCard format
+      const cards: VocabCard[] = shuffled.map((word, index) => ({
+        id: `temp-${index}`,
+        term: word,
+        definition: '', // Will be filled in by the game
+        orderIndex: index,
+      }));
+
+      setParsedCards(cards);
+      setVocabSource('new');
+      setVocabListName(`Combined Lists - ${new Date().toLocaleDateString()}`);
+      
+      // Skip to game selection
+      setCurrentStep('games');
+    } catch (error) {
+      console.error('Error loading pre-selected lists:', error);
+      toast.error('Failed to load selected vocabulary lists');
+    }
+  };
 
   const handleNextStep = () => {
     if (currentStep === 'vocabulary') {
@@ -148,9 +193,8 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
         jeopardyAnswerMode,
         jeopardyTimeLimit,
         requirePrerequisiteGames,
-        blokusAnswerMode,
-        blokusTimeLimit,
-        allowWordListDownload
+        allowWordListDownload,
+        defaultClassId
       );
 
       if (!linkResult.success) {
@@ -176,7 +220,8 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
   };
 
   const resetForm = () => {
-    setCurrentStep('vocabulary');
+    // Only reset to vocabulary step if no pre-selected lists
+    setCurrentStep(preSelectedListIds && preSelectedListIds.length > 0 ? 'games' : 'vocabulary');
     setVocabSource('new');
     setParsedCards([]);
     setVocabListName("");
@@ -192,8 +237,6 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
     setConnectFourAnswerMode('text-input');
     setJeopardyAnswerMode('text-input');
     setJeopardyTimeLimit(30);
-    setBlokusAnswerMode('text-input');
-    setBlokusTimeLimit(null);
     setGapFillGapCount(15);
     setGapFillSummaryLength(250);
     setLinkName("");
@@ -255,6 +298,7 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
             onSelectedListIdChange={setSelectedListId}
             existingLists={existingLists}
             onExistingListsChange={setExistingLists}
+            filterToListIds={filterToListIds}
           />
         )}
 
@@ -279,10 +323,6 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess }: CreateGa
             onJeopardyAnswerModeChange={setJeopardyAnswerMode}
             jeopardyTimeLimit={jeopardyTimeLimit}
             onJeopardyTimeLimitChange={setJeopardyTimeLimit}
-            blokusAnswerMode={blokusAnswerMode}
-            onBlokusAnswerModeChange={setBlokusAnswerMode}
-            blokusTimeLimit={blokusTimeLimit}
-            onBlokusTimeLimitChange={setBlokusTimeLimit}
             gapFillGapCount={gapFillGapCount}
             onGapFillGapCountChange={setGapFillGapCount}
             gapFillSummaryLength={gapFillSummaryLength}

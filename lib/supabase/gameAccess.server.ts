@@ -14,8 +14,6 @@ export interface GameAccessResult {
     connectFourAnswerMode?: 'text-input' | 'multiple-choice';
     jeopardyAnswerMode?: 'text-input' | 'multiple-choice';
     jeopardyTimeLimit?: number;
-    blokusAnswerMode?: 'text-input' | 'multiple-choice';
-    blokusTimeLimit?: number;
     gapFillGapCount?: number;
     gapFillSummaryLength?: number;
   };
@@ -37,7 +35,7 @@ export async function validateGameAccess(
   // Fetch the game link with its enabled games and answer modes
   const { data: gameLink, error } = await supabase
     .from('game_links')
-    .select('id, code, name, is_active, enabled_games, othello_answer_mode, tic_tac_toe_answer_mode, connect_four_answer_mode, jeopardy_answer_mode, jeopardy_time_limit, blokus_answer_mode, blokus_time_limit, gap_fill_gap_count, gap_fill_summary_length')
+    .select('id, code, name, is_active, enabled_games, othello_answer_mode, tic_tac_toe_answer_mode, connect_four_answer_mode, jeopardy_answer_mode, jeopardy_time_limit, gap_fill_gap_count, gap_fill_summary_length')
     .eq('code', code)
     .single();
 
@@ -63,8 +61,6 @@ export async function validateGameAccess(
         connectFourAnswerMode: gameLink.connect_four_answer_mode as 'text-input' | 'multiple-choice' | undefined,
         jeopardyAnswerMode: gameLink.jeopardy_answer_mode as 'text-input' | 'multiple-choice' | undefined,
         jeopardyTimeLimit: gameLink.jeopardy_time_limit,
-        blokusAnswerMode: gameLink.blokus_answer_mode as 'text-input' | 'multiple-choice' | undefined,
-        blokusTimeLimit: gameLink.blokus_time_limit,
         gapFillGapCount: gameLink.gap_fill_gap_count,
         gapFillSummaryLength: gameLink.gap_fill_summary_length,
       },
@@ -89,8 +85,6 @@ export async function validateGameAccess(
         connectFourAnswerMode: gameLink.connect_four_answer_mode as 'text-input' | 'multiple-choice' | undefined,
         jeopardyAnswerMode: gameLink.jeopardy_answer_mode as 'text-input' | 'multiple-choice' | undefined,
         jeopardyTimeLimit: gameLink.jeopardy_time_limit,
-        blokusAnswerMode: gameLink.blokus_answer_mode as 'text-input' | 'multiple-choice' | undefined,
-        blokusTimeLimit: gameLink.blokus_time_limit,
         gapFillGapCount: gameLink.gap_fill_gap_count,
         gapFillSummaryLength: gameLink.gap_fill_summary_length,
       },
@@ -113,8 +107,6 @@ export async function validateGameAccess(
       connectFourAnswerMode: gameLink.connect_four_answer_mode as 'text-input' | 'multiple-choice' | undefined,
       jeopardyAnswerMode: gameLink.jeopardy_answer_mode as 'text-input' | 'multiple-choice' | undefined,
       jeopardyTimeLimit: gameLink.jeopardy_time_limit,
-      blokusAnswerMode: gameLink.blokus_answer_mode as 'text-input' | 'multiple-choice' | undefined,
-      blokusTimeLimit: gameLink.blokus_time_limit,
       gapFillGapCount: gameLink.gap_fill_gap_count,
       gapFillSummaryLength: gameLink.gap_fill_summary_length,
     },

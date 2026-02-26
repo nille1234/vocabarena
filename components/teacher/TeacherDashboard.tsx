@@ -17,12 +17,15 @@ import {
   getAllGameLinks,
 } from "@/lib/supabase/vocabularyManagement";
 import { getCurrentUserProfile, getAllUsers, UserProfile } from "@/lib/supabase/userManagement";
-import { VocabularyList, GameLink } from "@/types/game";
+import { VocabularyList, GameLink, Class } from "@/types/game";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, Link as LinkIcon } from "lucide-react";
+import { BookOpen, Link as LinkIcon, GraduationCap } from "lucide-react";
 import { VocabularyListsTab } from "./VocabularyListsTab";
 import { GameLinksTab } from "./GameLinksTab";
 import { UserManagementTab } from "./UserManagementTab";
+import { ClassesTab } from "./ClassesTab";
+import { CreateClassDialog } from "./CreateClassDialog";
+import { getAllClasses } from "@/lib/supabase/classManagement";
 import { LogoutButton } from "@/components/logout-button";
 import { KeyRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -40,50 +43,26 @@ export function TeacherDashboard({ userId, userEmail }: TeacherDashboardProps) {
   const [editingGameLink, setEditingGameLink] = useState<GameLink | null>(null);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [isChangePasswordDialogOpen, setIsChangePasswordDialogOpen] = useState(false);
+  const [isCreateClassDialogOpen, setIsCreateClassDialogOpen] = useState(false);
   
   // Data
   const [vocabularyLists, setVocabularyLists] = useState<VocabularyList[]>([]);
   const [gameLinks, setGameLinks] = useState<GameLink[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
-  const [authVerified, setAuthVerified] = useState(false);
 
-  // Client-side authentication verification with periodic checks
+  // Load data on mount
   useEffect(() => {
-    let isSubscribed = true;
-    let intervalId: NodeJS.Timeout;
+    loadData();
+  }, []);
 
-    const verifyAuth = async () => {
-      const supabase = createClient();
-      const { data: { user }, error } = await supabase.auth.getUser();
-      
-      // If component unmounted, don't update state
-      if (!isSubscribed) return;
-      
-      // If no user or error, redirect to login
-      if (!user || error || user.id !== userId) {
-        console.error('Authentication verification failed:', error);
-        toast.error('Session expired. Please log in again.');
-        router.push('/auth/login?redirectTo=/teacher');
-        return;
-      }
-      
-      setAuthVerified(true);
-    };
-    
-    // Initial verification
-    verifyAuth();
-
-    // Set up periodic session validation (every 30 seconds)
-    intervalId = setInterval(() => {
-      verifyAuth();
-    }, 30000);
-
-    // Listen for auth state changes
+  // Monitor for auth state changes (sign out)
+  useEffect(() => {
     const supabase = createClient();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED' && !session) {
+      if (event === 'SIGNED_OUT') {
         toast.error('Session expired. Please log in again.');
         router.push('/auth/login?redirectTo=/teacher');
       }
@@ -91,33 +70,27 @@ export function TeacherDashboard({ userId, userEmail }: TeacherDashboardProps) {
 
     // Cleanup
     return () => {
-      isSubscribed = false;
-      clearInterval(intervalId);
       subscription.unsubscribe();
     };
-  }, [userId, router]);
-
-  useEffect(() => {
-    if (authVerified) {
-      loadData();
-    }
-  }, [authVerified]);
+  }, [router]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       console.log('Loading teacher dashboard data...');
-      const [lists, links, profile, allUsers] = await Promise.all([
+      const [lists, links, profile, allUsers, allClasses] = await Promise.all([
         getAllVocabularyLists(),
         getAllGameLinks(),
         getCurrentUserProfile(),
-        getAllUsers()
+        getAllUsers(),
+        getAllClasses()
       ]);
       console.log('Loaded data:', { 
         listsCount: lists.length, 
         linksCount: links.length, 
         profile, 
-        usersCount: allUsers.length 
+        usersCount: allUsers.length,
+        classesCount: allClasses.length
       });
       console.log('Current user profile details:', {
         id: profile?.id,
@@ -129,6 +102,7 @@ export function TeacherDashboard({ userId, userEmail }: TeacherDashboardProps) {
       setGameLinks(links);
       setCurrentUserProfile(profile);
       setUsers(allUsers);
+      setClasses(allClasses);
     } catch (error) {
       console.error('Error loading data:', error);
       toast.error('Failed to load data');
@@ -136,27 +110,6 @@ export function TeacherDashboard({ userId, userEmail }: TeacherDashboardProps) {
       setLoading(false);
     }
   };
-
-  // Show loading state while verifying authentication
-  if (!authVerified) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-              <div>
-                <h2 className="text-xl font-semibold mb-2">Verifying Authentication</h2>
-                <p className="text-sm text-muted-foreground">
-                  Please wait while we verify your credentials...
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
@@ -225,7 +178,7 @@ export function TeacherDashboard({ userId, userEmail }: TeacherDashboardProps) {
           transition={{ duration: 0.5, delay: 0.2 }}
         >
           <Tabs defaultValue="links" className="space-y-6">
-            <TabsList className={`grid w-full ${currentUserProfile?.role === 'super_admin' ? 'grid-cols-3' : 'grid-cols-2'} max-w-2xl`}>
+            <TabsList className={`grid w-full ${currentUserProfile?.role === 'super_admin' ? 'grid-cols-4' : 'grid-cols-3'}`}>
               <TabsTrigger value="links">
                 <LinkIcon className="h-4 w-4 mr-2" />
                 Game Links
@@ -233,6 +186,10 @@ export function TeacherDashboard({ userId, userEmail }: TeacherDashboardProps) {
               <TabsTrigger value="vocabulary">
                 <BookOpen className="h-4 w-4 mr-2" />
                 Vocabulary Lists
+              </TabsTrigger>
+              <TabsTrigger value="classes">
+                <GraduationCap className="h-4 w-4 mr-2" />
+                Classes
               </TabsTrigger>
               {currentUserProfile?.role === 'super_admin' && (
                 <TabsTrigger value="users">
@@ -296,6 +253,39 @@ export function TeacherDashboard({ userId, userEmail }: TeacherDashboardProps) {
               </Card>
             </TabsContent>
 
+            {/* Classes Tab */}
+            <TabsContent value="classes" className="space-y-4">
+              <Card className="border-border/50 bg-card/50 backdrop-blur">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="font-heading text-2xl">Classes</CardTitle>
+                      <CardDescription>
+                        Organize game links and vocabulary lists by class
+                      </CardDescription>
+                    </div>
+                    <Button onClick={() => setIsCreateClassDialogOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Class
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {loading ? (
+                    <div className="text-center py-8">
+                      <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+                    </div>
+                  ) : (
+                    <ClassesTab 
+                      classes={classes}
+                      onRefresh={loadData}
+                      onCreateClass={() => setIsCreateClassDialogOpen(true)}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             {/* User Management Tab (Super Admin Only) */}
             {currentUserProfile?.role === 'super_admin' && (
               <TabsContent value="users" className="space-y-4">
@@ -353,6 +343,13 @@ export function TeacherDashboard({ userId, userEmail }: TeacherDashboardProps) {
       <ChangePasswordDialog
         open={isChangePasswordDialogOpen}
         onOpenChange={setIsChangePasswordDialogOpen}
+      />
+
+      {/* Create Class Dialog */}
+      <CreateClassDialog
+        open={isCreateClassDialogOpen}
+        onOpenChange={setIsCreateClassDialogOpen}
+        onSuccess={loadData}
       />
     </div>
   );

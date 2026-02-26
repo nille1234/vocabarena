@@ -13,8 +13,6 @@ export interface GameAccessResult {
     connectFourAnswerMode?: 'text-input' | 'multiple-choice';
     jeopardyAnswerMode?: 'text-input' | 'multiple-choice';
     jeopardyTimeLimit?: number;
-    blokusAnswerMode?: 'text-input' | 'multiple-choice';
-    blokusTimeLimit?: number;
     gapFillGapCount?: number;
     gapFillSummaryLength?: number;
   };

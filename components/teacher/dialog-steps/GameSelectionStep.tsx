@@ -37,10 +37,6 @@ interface GameSelectionStepProps {
   onJeopardyAnswerModeChange: (mode: 'text-input' | 'multiple-choice') => void;
   jeopardyTimeLimit: number;
   onJeopardyTimeLimitChange: (limit: number) => void;
-  blokusAnswerMode: 'text-input' | 'multiple-choice';
-  onBlokusAnswerModeChange: (mode: 'text-input' | 'multiple-choice') => void;
-  blokusTimeLimit: number | null;
-  onBlokusTimeLimitChange: (limit: number | null) => void;
   gapFillGapCount: number;
   onGapFillGapCountChange: (count: number) => void;
   gapFillSummaryLength: number;
@@ -68,10 +64,6 @@ export function GameSelectionStep({
   onJeopardyAnswerModeChange,
   jeopardyTimeLimit,
   onJeopardyTimeLimitChange,
-  blokusAnswerMode,
-  onBlokusAnswerModeChange,
-  blokusTimeLimit,
-  onBlokusTimeLimitChange,
   gapFillGapCount,
   onGapFillGapCountChange,
   gapFillSummaryLength,
@@ -101,7 +93,6 @@ export function GameSelectionStep({
   const isTicTacToeSelected = selectedGames.includes('tic-tac-toe');
   const isConnectFourSelected = selectedGames.includes('connect-four');
   const isJeopardySelected = selectedGames.includes('jeopardy');
-  const isBlokusSelected = selectedGames.includes('blokus');
   const isGapFillSelected = selectedGames.includes('gap-fill');
 
   return (
@@ -403,75 +394,6 @@ export function GameSelectionStep({
                       </RadioGroup>
                       <p className="text-xs text-muted-foreground">
                         Choose how long students have to answer each question
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Blokus Settings */}
-            {isBlokusSelected && (
-              <Card className="border-primary/50 bg-primary/5">
-                <CardContent className="pt-6">
-                  <div className="space-y-4">
-                    <div>
-                      <Label className="text-base font-semibold">
-                        Blokus Settings
-                      </Label>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Configure answer mode and time limit for Blokus
-                      </p>
-                    </div>
-                    
-                    <div className="space-y-3">
-                      <Label>Answer Mode</Label>
-                      <RadioGroup value={blokusAnswerMode} onValueChange={onBlokusAnswerModeChange}>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="text-input" id="blokus-text" />
-                          <Label htmlFor="blokus-text" className="font-normal cursor-pointer">
-                            Text Input - Students type their answers
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="multiple-choice" id="blokus-mc" />
-                          <Label htmlFor="blokus-mc" className="font-normal cursor-pointer">
-                            Multiple Choice - Students choose from 4 options
-                          </Label>
-                        </div>
-                      </RadioGroup>
-                    </div>
-
-                    <div className="space-y-3 pt-2 border-t">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="blokusTimeLimit">Time Limit per Question</Label>
-                        <span className="text-sm font-semibold text-primary">
-                          {blokusTimeLimit ? `${blokusTimeLimit} seconds` : 'No limit'}
-                        </span>
-                      </div>
-                      <RadioGroup 
-                        value={blokusTimeLimit?.toString() || 'none'} 
-                        onValueChange={(value) => onBlokusTimeLimitChange(value === 'none' ? null : parseInt(value))}
-                      >
-                        <div className="grid grid-cols-4 gap-2">
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="none" id="blokus-time-none" />
-                            <Label htmlFor="blokus-time-none" className="font-normal cursor-pointer">
-                              None
-                            </Label>
-                          </div>
-                          {[10, 20, 30, 40, 50, 60].map((seconds) => (
-                            <div key={seconds} className="flex items-center space-x-2">
-                              <RadioGroupItem value={seconds.toString()} id={`blokus-time-${seconds}`} />
-                              <Label htmlFor={`blokus-time-${seconds}`} className="font-normal cursor-pointer">
-                                {seconds}s
-                              </Label>
-                            </div>
-                          ))}
-                        </div>
-                      </RadioGroup>
-                      <p className="text-xs text-muted-foreground">
-                        Choose how long students have to answer each question, or select "None" for no time limit
                       </p>
                     </div>
                   </div>

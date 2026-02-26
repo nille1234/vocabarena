@@ -42,11 +42,29 @@ export async function DELETE(
       );
     }
 
-    // Verify the current user is a super admin
+    // Verify the current user using a client with their JWT token
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user: currentUser }, error: userError } = await supabaseAdmin.auth.getUser(token);
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY!;
+    
+    if (!anonKey) {
+      return NextResponse.json(
+        { error: 'Server configuration error: Missing anon key' },
+        { status: 500 }
+      );
+    }
+
+    const supabaseUser = createClient(supabaseUrl, anonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    });
+
+    const { data: { user: currentUser }, error: userError } = await supabaseUser.auth.getUser();
     
     if (userError || !currentUser) {
+      console.error('Error verifying user:', userError);
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -54,13 +72,13 @@ export async function DELETE(
     }
 
     // Check if current user is super admin
-    const { data: currentProfile, error: profileError } = await supabaseAdmin
+    const { data: currentProfile, error: currentProfileError } = await supabaseAdmin
       .from('user_profiles')
       .select('role')
       .eq('id', currentUser.id)
       .single();
 
-    if (profileError || !currentProfile || currentProfile.role !== 'super_admin') {
+    if (currentProfileError || !currentProfile || currentProfile.role !== 'super_admin') {
       return NextResponse.json(
         { error: 'Only super admins can delete users' },
         { status: 403 }
@@ -75,13 +93,58 @@ export async function DELETE(
       );
     }
 
-    // Delete the user (this will cascade delete the profile, vocabulary lists, and game links)
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    // Check if the user profile exists in the database
+    const { data: profileToDelete, error: profileToDeleteError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id, role')
+      .eq('id', userId)
+      .single();
 
-    if (deleteError) {
-      console.error('Error deleting user:', deleteError);
+    if (profileToDeleteError || !profileToDelete) {
+      console.error('User profile not found:', profileToDeleteError);
       return NextResponse.json(
-        { error: deleteError.message },
+        { error: 'User not found. They may have already been deleted.' },
+        { status: 404 }
+      );
+    }
+
+    // Prevent deletion of super admin accounts (extra safety check)
+    if (profileToDelete.role === 'super_admin') {
+      return NextResponse.json(
+        { error: 'Cannot delete super admin accounts' },
+        { status: 403 }
+      );
+    }
+
+    // Try to delete from Supabase Auth (may not exist if orphaned)
+    const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+    
+    if (authUser) {
+      // User exists in auth, delete them
+      const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+      
+      if (deleteAuthError) {
+        console.error('Error deleting auth user:', deleteAuthError);
+        return NextResponse.json(
+          { error: deleteAuthError.message || 'Failed to delete user from authentication' },
+          { status: 400 }
+        );
+      }
+    } else {
+      console.log('Auth user not found, will clean up profile record only');
+    }
+
+    // Delete the user profile (this will cascade delete vocabulary lists and game links)
+    // This handles both normal deletions and cleanup of orphaned profiles
+    const { error: deleteProfileError } = await supabaseAdmin
+      .from('user_profiles')
+      .delete()
+      .eq('id', userId);
+
+    if (deleteProfileError) {
+      console.error('Error deleting user profile:', deleteProfileError);
+      return NextResponse.json(
+        { error: 'Failed to delete user profile' },
         { status: 400 }
       );
     }

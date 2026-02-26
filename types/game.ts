@@ -2,7 +2,7 @@ export type GameMode =
   | 'match' | 'gravity' 
   | 'hangman'
   | 'memory' | 'othello' | 'tic-tac-toe' | 'crossword'
-  | 'word-scramble' | 'word-search' | 'word-finder' | 'flashcards' | 'gap-fill' | 'connect-four' | 'jeopardy' | 'blokus';
+  | 'word-scramble' | 'word-search' | 'word-finder' | 'flashcards' | 'gap-fill' | 'connect-four' | 'jeopardy';
 
 export type GameStatus = 'waiting' | 'active' | 'completed';
 
@@ -73,12 +73,28 @@ export interface PlayerStats {
   longestStreak: number;
 }
 
+// Class Management Types
+export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced';
+
+export interface Class {
+  id: string;
+  teacherId: string;
+  name: string;
+  description?: string;
+  gradeLevel?: string;
+  subject?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Vocabulary Management Types
 export interface VocabularyList {
   id: string;
   name: string;
   description?: string;
   language?: 'english' | 'german'; // Language for clues in games like crossword
+  difficultyLevel?: DifficultyLevel; // For differentiated instruction
+  classId?: string; // Optional class assignment
   cards: VocabCard[];
   createdAt: Date;
   updatedAt: Date;
@@ -89,6 +105,7 @@ export interface GameLink {
   code: string;
   name: string;
   listId: string;
+  classId?: string; // Optional class assignment
   vocabularyList?: VocabularyList;
   enabledGames: GameMode[];
   crosswordWordCount?: number; // number of words in crossword puzzle
@@ -99,8 +116,6 @@ export interface GameLink {
   connectFourAnswerMode?: 'text-input' | 'multiple-choice'; // answer mode for connect four
   jeopardyAnswerMode?: 'text-input' | 'multiple-choice'; // answer mode for jeopardy
   jeopardyTimeLimit?: number; // time limit per question in jeopardy (10, 20, 30, 40, 50, 60 seconds)
-  blokusAnswerMode?: 'text-input' | 'multiple-choice'; // answer mode for blokus
-  blokusTimeLimit?: number; // time limit per question in blokus (10, 20, 30, 40, 50, 60 seconds, or null for no limit)
   gapFillGapCount?: number; // number of gaps in gap-fill summary
   gapFillSummaryLength?: number; // word count for gap-fill summary
   requirePrerequisiteGames?: boolean; // if true, students must complete Match and Flashcards before accessing other games

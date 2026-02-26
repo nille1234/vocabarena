@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   Trash2, 
   Edit2, 
@@ -11,9 +19,13 @@ import {
   X,
   Download,
   Copy,
-  FileEdit
+  FileEdit,
+  GraduationCap,
+  TrendingUp
 } from "lucide-react";
 import { toast } from "sonner";
+import { getAllClasses } from "@/lib/supabase/classManagement";
+import { Class } from "@/types/game";
 import {
   deleteVocabularyList,
   updateVocabularyList,
@@ -60,6 +72,47 @@ export function VocabularyListsTab({ vocabularyLists, onRefresh }: VocabularyLis
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadingDeEnId, setDownloadingDeEnId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [assigningClassId, setAssigningClassId] = useState<string | null>(null);
+
+  // Classes for displaying names
+  const [classes, setClasses] = useState<Class[]>([]);
+
+  useEffect(() => {
+    loadClasses();
+  }, []);
+
+  const loadClasses = async () => {
+    try {
+      const allClasses = await getAllClasses();
+      setClasses(allClasses);
+    } catch (error) {
+      console.error('Error loading classes:', error);
+    }
+  };
+
+  const getClassName = (classId: string | undefined) => {
+    if (!classId) return null;
+    const cls = classes.find(c => c.id === classId);
+    return cls?.name || 'Unknown Class';
+  };
+
+  const getDifficultyColor = (level: string | undefined) => {
+    switch (level) {
+      case 'beginner':
+        return 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20';
+      case 'intermediate':
+        return 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/20';
+      case 'advanced':
+        return 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20';
+      default:
+        return '';
+    }
+  };
+
+  const formatDifficulty = (level: string | undefined) => {
+    if (!level) return null;
+    return level.charAt(0).toUpperCase() + level.slice(1);
+  };
 
   const handleStartEditList = (list: VocabularyList) => {
     setEditingListId(list.id);
@@ -154,6 +207,27 @@ export function VocabularyListsTab({ vocabularyLists, onRefresh }: VocabularyLis
     }
   };
 
+  const handleClassAssignment = async (listId: string, classId: string) => {
+    setAssigningClassId(listId);
+    try {
+      const result = await updateVocabularyList(listId, {
+        classId: classId === 'none' ? null : classId
+      });
+      
+      if (result.success) {
+        toast.success(classId === 'none' ? 'Class assignment removed' : 'Assigned to class');
+        onRefresh();
+      } else {
+        toast.error(result.error || 'Failed to assign class');
+      }
+    } catch (error) {
+      console.error('Error assigning class:', error);
+      toast.error('Failed to assign class');
+    } finally {
+      setAssigningClassId(null);
+    }
+  };
+
   if (vocabularyLists.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
@@ -214,6 +288,23 @@ export function VocabularyListsTab({ vocabularyLists, onRefresh }: VocabularyLis
                       {list.description}
                     </p>
                   )}
+                  
+                  {/* Badges for class and difficulty */}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {list.classId && (
+                      <Badge variant="secondary" className="text-xs">
+                        <GraduationCap className="h-3 w-3 mr-1" />
+                        {getClassName(list.classId)}
+                      </Badge>
+                    )}
+                    {list.difficultyLevel && (
+                      <Badge variant="outline" className={`text-xs ${getDifficultyColor(list.difficultyLevel)}`}>
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                        {formatDifficulty(list.difficultyLevel)}
+                      </Badge>
+                    )}
+                  </div>
+
                   <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
                     <span>{list.cards.length} words</span>
                     <span>Created {new Date(list.createdAt).toLocaleDateString()}</span>
@@ -250,6 +341,36 @@ export function VocabularyListsTab({ vocabularyLists, onRefresh }: VocabularyLis
                   <Copy className="h-4 w-4 mr-2" />
                   {copyingId === list.id ? 'Copying...' : 'Copy DE/EN'}
                 </Button>
+                
+                {/* Assign to Class Dropdown */}
+                <Select
+                  value={list.classId || 'none'}
+                  onValueChange={(value) => handleClassAssignment(list.id, value)}
+                  disabled={assigningClassId === list.id}
+                >
+                  <SelectTrigger className="h-9 w-[180px]">
+                    <SelectValue placeholder="Assign to Class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      {list.classId ? 'Remove Class' : 'No Class'}
+                    </SelectItem>
+                    {classes.length > 0 && (
+                      <>
+                        <div className="h-px bg-border my-1" />
+                        {classes.map((cls) => (
+                          <SelectItem key={cls.id} value={cls.id}>
+                            <div className="flex items-center gap-2">
+                              <GraduationCap className="h-3 w-3" />
+                              {cls.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+
                 <Button
                   variant="outline"
                   size="sm"

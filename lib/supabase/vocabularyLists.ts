@@ -1,0 +1,317 @@
+import { createClient } from './client';
+import { VocabularyList, VocabCard } from '@/types/game';
+
+export async function createVocabularyList(
+  name: string,
+  cards: VocabCard[],
+  description?: string,
+  language?: 'english' | 'german'
+): Promise<{ success: boolean; listId?: string; error?: string }> {
+  const supabase = createClient();
+  if (!supabase) {
+    return { success: false, error: 'Supabase client not initialized' };
+  }
+
+  try {
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
+    // Check if a vocabulary list with the same name already exists for this user
+    const { data: existingList, error: checkError } = await supabase
+      .from('vocabulary_lists')
+      .select('id, name')
+      .eq('name', name)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+
+    if (existingList) {
+      // List with same name exists, return the existing list ID
+      return { 
+        success: true, 
+        listId: existingList.id,
+      };
+    }
+
+    // Create the vocabulary list
+    const { data: listData, error: listError } = await supabase
+      .from('vocabulary_lists')
+      .insert({
+        name,
+        description,
+        language,
+        user_id: user.id,
+      })
+      .select()
+      .single();
+
+    if (listError) throw listError;
+
+    // Insert all vocabulary cards
+    const cardsToInsert = cards.map((card) => ({
+      list_id: listData.id,
+      term: card.term,
+      definition: card.definition,
+      german_term: card.germanTerm,
+      order_index: card.orderIndex,
+    }));
+
+    const { error: cardsError } = await supabase
+      .from('vocabulary_cards')
+      .insert(cardsToInsert);
+
+    if (cardsError) throw cardsError;
+
+    return { success: true, listId: listData.id };
+  } catch (error) {
+    console.error('Error creating vocabulary list:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function getAllVocabularyLists(): Promise<VocabularyList[]> {
+  const supabase = createClient();
+  if (!supabase) return [];
+
+  try {
+    // Get current user to filter by user_id
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('User not authenticated:', userError);
+      return [];
+    }
+
+    const { data: lists, error: listsError } = await supabase
+      .from('vocabulary_lists')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (listsError) throw listsError;
+    if (!lists) return [];
+
+    // Fetch cards for each list
+    const listsWithCards = await Promise.all(
+      lists.map(async (list: any): Promise<VocabularyList | null> => {
+        const { data: cards, error: cardsError } = await supabase
+          .from('vocabulary_cards')
+          .select('*')
+          .eq('list_id', list.id)
+          .order('order_index', { ascending: true });
+
+        if (cardsError) {
+          console.error('Error fetching cards:', cardsError);
+          return null;
+        }
+
+        return {
+          id: list.id,
+          name: list.name,
+          description: list.description,
+          language: list.language,
+          difficultyLevel: list.difficulty_level,
+          classId: list.class_id,
+          cards: cards.map((card: any) => ({
+            id: card.id,
+            term: card.term,
+            definition: card.definition,
+            germanTerm: card.german_term,
+            orderIndex: card.order_index,
+          })),
+          createdAt: new Date(list.created_at),
+          updatedAt: new Date(list.updated_at),
+        } as VocabularyList;
+      })
+    );
+
+    return listsWithCards.filter((list): list is VocabularyList => list !== null);
+  } catch (error) {
+    console.error('Error fetching vocabulary lists:', error);
+    return [];
+  }
+}
+
+export async function getVocabularyListById(listId: string): Promise<VocabularyList | null> {
+  const supabase = createClient();
+  if (!supabase) return null;
+
+  try {
+    const { data: list, error: listError } = await supabase
+      .from('vocabulary_lists')
+      .select('*')
+      .eq('id', listId)
+      .single();
+
+    if (listError) throw listError;
+    if (!list) return null;
+
+    const { data: cards, error: cardsError } = await supabase
+      .from('vocabulary_cards')
+      .select('*')
+      .eq('list_id', listId)
+      .order('order_index', { ascending: true });
+
+    if (cardsError) throw cardsError;
+
+    return {
+      id: list.id,
+      name: list.name,
+      description: list.description,
+      language: list.language,
+      difficultyLevel: list.difficulty_level,
+      classId: list.class_id,
+      cards: cards.map((card: any) => ({
+        id: card.id,
+        term: card.term,
+        definition: card.definition,
+        germanTerm: card.german_term,
+        orderIndex: card.order_index,
+        jeopardyCategory: card.jeopardy_category,
+      })),
+      createdAt: new Date(list.created_at),
+      updatedAt: new Date(list.updated_at),
+    };
+  } catch (error) {
+    console.error('Error fetching vocabulary list:', error);
+    return null;
+  }
+}
+
+export async function updateVocabularyList(
+  listId: string,
+  updates: { 
+    name?: string; 
+    description?: string; 
+    cards?: VocabCard[];
+    classId?: string | null;
+    difficultyLevel?: 'beginner' | 'intermediate' | 'advanced' | null;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = createClient();
+  if (!supabase) {
+    return { success: false, error: 'Supabase client not initialized' };
+  }
+
+  try {
+    // Update list metadata if provided
+    if (updates.name !== undefined || updates.description !== undefined || 
+        updates.classId !== undefined || updates.difficultyLevel !== undefined) {
+      const metadataUpdates: any = {};
+      if (updates.name !== undefined) metadataUpdates.name = updates.name;
+      if (updates.description !== undefined) metadataUpdates.description = updates.description;
+      if (updates.classId !== undefined) metadataUpdates.class_id = updates.classId;
+      if (updates.difficultyLevel !== undefined) metadataUpdates.difficulty_level = updates.difficultyLevel;
+
+      const { error } = await supabase
+        .from('vocabulary_lists')
+        .update(metadataUpdates)
+        .eq('id', listId);
+
+      if (error) throw error;
+    }
+
+    // Update cards if provided
+    if (updates.cards !== undefined) {
+      // Delete all existing cards for this list
+      const { error: deleteError } = await supabase
+        .from('vocabulary_cards')
+        .delete()
+        .eq('list_id', listId);
+
+      if (deleteError) throw deleteError;
+
+      // Insert new cards
+      const cardsToInsert = updates.cards.map((card) => ({
+        list_id: listId,
+        term: card.term,
+        definition: card.definition,
+        german_term: card.germanTerm,
+        order_index: card.orderIndex,
+        jeopardy_category: card.jeopardyCategory,
+      }));
+
+      const { error: insertError } = await supabase
+        .from('vocabulary_cards')
+        .insert(cardsToInsert);
+
+      if (insertError) throw insertError;
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating vocabulary list:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function deleteVocabularyList(listId: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = createClient();
+  if (!supabase) {
+    return { success: false, error: 'Supabase client not initialized' };
+  }
+
+  try {
+    // Check if there are any active game links using this list
+    const { data: links, error: linksError } = await supabase
+      .from('game_links')
+      .select('id')
+      .eq('list_id', listId)
+      .eq('is_active', true);
+
+    if (linksError) throw linksError;
+
+    if (links && links.length > 0) {
+      return {
+        success: false,
+        error: 'Cannot delete vocabulary list with active game links. Please deactivate or delete the game links first.',
+      };
+    }
+
+    // Delete the list (cards will be deleted automatically due to CASCADE)
+    const { error } = await supabase
+      .from('vocabulary_lists')
+      .delete()
+      .eq('id', listId);
+
+    if (error) throw error;
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting vocabulary list:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function getVocabularyListWords(listId: string): Promise<string[]> {
+  const supabase = createClient();
+  if (!supabase) return [];
+
+  try {
+    const { data: cards, error } = await supabase
+      .from('vocabulary_cards')
+      .select('term')
+      .eq('list_id', listId)
+      .order('order_index', { ascending: true });
+
+    if (error) throw error;
+    if (!cards) return [];
+
+    return cards.map((card: any) => card.term);
+  } catch (error) {
+    console.error('Error fetching vocabulary list words:', error);
+    return [];
+  }
+}

@@ -21,6 +21,14 @@ export async function GET(request: NextRequest) {
         autoRefreshToken: false,
         persistSession: false,
       },
+      db: {
+        schema: 'public',
+      },
+      global: {
+        headers: {
+          'x-client-info': `supabase-js-node/${Date.now()}`,
+        },
+      },
     });
 
     // Get the current user from the request
@@ -57,10 +65,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get all user profiles
+    // Get all user profiles - force fresh data by adding a timestamp filter that's always true
+    // This prevents any potential caching at the Supabase client level
     const { data: profiles, error: profilesError } = await supabaseAdmin
       .from('user_profiles')
       .select('*')
+      .gte('created_at', '1970-01-01') // Always true, but forces fresh query
       .order('created_at', { ascending: false });
 
     if (profilesError) {
@@ -71,24 +81,48 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get auth user data for each profile
+    // Get content counts for all users in parallel
+    const [vocabularyListsData, gameLinksData, classesData] = await Promise.all([
+      supabaseAdmin
+        .from('vocabulary_lists')
+        .select('user_id', { count: 'exact', head: false }),
+      supabaseAdmin
+        .from('game_links')
+        .select('user_id', { count: 'exact', head: false }),
+      supabaseAdmin
+        .from('classes')
+        .select('teacher_id', { count: 'exact', head: false }),
+    ]);
+
+    // Create count maps for quick lookup
+    const vocabularyListCounts = new Map<string, number>();
+    const gameLinkCounts = new Map<string, number>();
+    const classCounts = new Map<string, number>();
+
+    vocabularyListsData.data?.forEach((item) => {
+      const userId = item.user_id;
+      vocabularyListCounts.set(userId, (vocabularyListCounts.get(userId) || 0) + 1);
+    });
+
+    gameLinksData.data?.forEach((item) => {
+      const userId = item.user_id;
+      gameLinkCounts.set(userId, (gameLinkCounts.get(userId) || 0) + 1);
+    });
+
+    classesData.data?.forEach((item) => {
+      const userId = item.teacher_id;
+      classCounts.set(userId, (classCounts.get(userId) || 0) + 1);
+    });
+
+    // Get auth user data for each profile and filter out deleted users
     const usersWithEmails = await Promise.all(
       profiles.map(async (profile) => {
         try {
           const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(profile.id);
           
           if (authError || !authUser.user) {
-            console.error(`Error fetching auth user ${profile.id}:`, authError);
-            return {
-              id: profile.id,
-              email: 'Error loading',
-              role: profile.role,
-              passwordChangeRequired: profile.password_change_required,
-              createdBy: profile.created_by,
-              createdAt: profile.created_at,
-              updatedAt: profile.updated_at,
-              lastSignInAt: null,
-            };
+            console.log(`User ${profile.id} not found in auth, skipping (likely deleted)`);
+            return null; // Return null for deleted users
           }
 
           return {
@@ -100,24 +134,30 @@ export async function GET(request: NextRequest) {
             createdAt: profile.created_at,
             updatedAt: profile.updated_at,
             lastSignInAt: authUser.user.last_sign_in_at,
+            vocabularyListCount: vocabularyListCounts.get(profile.id) || 0,
+            gameLinkCount: gameLinkCounts.get(profile.id) || 0,
+            classCount: classCounts.get(profile.id) || 0,
           };
         } catch (error) {
           console.error(`Error processing user ${profile.id}:`, error);
-          return {
-            id: profile.id,
-            email: 'Error loading',
-            role: profile.role,
-            passwordChangeRequired: profile.password_change_required,
-            createdBy: profile.created_by,
-            createdAt: profile.created_at,
-            updatedAt: profile.updated_at,
-            lastSignInAt: null,
-          };
+          return null; // Return null for users with errors
         }
       })
     );
 
-    return NextResponse.json({ users: usersWithEmails });
+    // Filter out null values (deleted users)
+    const validUsers = usersWithEmails.filter(user => user !== null);
+
+    return NextResponse.json(
+      { users: validUsers },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error in users route:', error);
     return NextResponse.json(

@@ -5,10 +5,10 @@ A competitive vocabulary learning platform designed for 18-year-olds with team-b
 ## 🌟 Features
 
 ### Core Functionality
-- **18 Game Modes**: Solo practice and 2-player competitive games
-- **1-Player Games**: Flashcards, Learn, Spell, Test, Speed Challenge, Falling Words, Word Ladder, Mystery Word, Sentence Builder, Survival, Hangman, Gravity, Memory Match
-- **2-Player Games**: Match, Memory Match, Othello Vocab Challenge, Urban Life Hex, Five-in-a-Row Tic-Tac-Toe
-- **Team Competition**: Join games with unique codes and compete in real-time
+- **14 Game Modes**: Diverse vocabulary learning games
+- **Solo Games**: Flashcards, Hangman, Gravity, Memory Match, Word Scramble, Word Search, Word Finder, Gap-Fill, Crossword
+- **Strategy Games**: Othello, Five-in-a-Row Tic-Tac-Toe, Connect Four, Jeopardy
+- **Game Links**: Teachers create shareable links for students to access games
 - **Gamification**: XP system, streaks, badges, and achievements
 - **Modern Design**: Dark mode by default with bold, high-contrast neon aesthetics
 - **Smooth Animations**: Framer Motion powered micro-interactions and celebrations
@@ -192,11 +192,9 @@ The app includes a pre-loaded mental health vocabulary set with 40 English-Danis
 ## 🔮 Upcoming Features
 
 ### Phase 2 (In Development)
-- [ ] Supabase integration for persistence
-- [ ] Real-time multiplayer with Supabase Realtime
+- [x] Supabase integration for persistence
 - [ ] Audio system with background music and SFX
-- [ ] Match game mode
-- [ ] Gravity game mode
+- [ ] Additional game modes
 
 ### Phase 3 (Planned)
 - [ ] Learn/Write mode

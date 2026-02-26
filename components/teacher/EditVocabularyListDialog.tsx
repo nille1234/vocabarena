@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,10 +10,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { WordListEditor } from "./WordListEditor";
 import { JeopardyCategorizeDialog } from "./JeopardyCategorizeDialog";
-import { VocabularyList, VocabCard } from "@/types/game";
+import { VocabularyList, VocabCard, Class, DifficultyLevel } from "@/types/game";
 import { updateVocabularyList } from "@/lib/supabase/vocabularyManagement";
+import { getAllClasses } from "@/lib/supabase/classManagement";
 import { toast } from "sonner";
 import { Sparkles } from "lucide-react";
 
@@ -31,8 +40,27 @@ export function EditVocabularyListDialog({
   onSuccess,
 }: EditVocabularyListDialogProps) {
   const [cards, setCards] = useState<VocabCard[]>(list.cards);
+  const [classId, setClassId] = useState<string | null>(list.classId || null);
+  const [difficultyLevel, setDifficultyLevel] = useState<DifficultyLevel | null>(list.difficultyLevel || null);
+  const [classes, setClasses] = useState<Class[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showCategorizeDialog, setShowCategorizeDialog] = useState(false);
+
+  // Load classes when dialog opens
+  useEffect(() => {
+    if (open) {
+      loadClasses();
+    }
+  }, [open]);
+
+  const loadClasses = async () => {
+    try {
+      const allClasses = await getAllClasses();
+      setClasses(allClasses);
+    } catch (error) {
+      console.error('Error loading classes:', error);
+    }
+  };
 
   const handleSave = async () => {
     // Validate that all cards have required fields
@@ -53,7 +81,11 @@ export function EditVocabularyListDialog({
     setIsSaving(true);
 
     try {
-      const result = await updateVocabularyList(list.id, { cards });
+      const result = await updateVocabularyList(list.id, { 
+        cards,
+        classId: classId || null,
+        difficultyLevel: difficultyLevel || null
+      });
       
       if (result.success) {
         toast.success("Vocabulary list updated successfully");
@@ -71,8 +103,10 @@ export function EditVocabularyListDialog({
   };
 
   const handleCancel = () => {
-    // Reset cards to original state
+    // Reset to original state
     setCards(list.cards);
+    setClassId(list.classId || null);
+    setDifficultyLevel(list.difficultyLevel || null);
     onOpenChange(false);
   };
 
@@ -107,6 +141,55 @@ export function EditVocabularyListDialog({
         </DialogHeader>
 
         <div className="py-4 space-y-4">
+          {/* Class and Difficulty Selection */}
+          <div className="grid grid-cols-2 gap-4 pb-4 border-b">
+            <div className="space-y-2">
+              <Label htmlFor="class">Assign to Class (Optional)</Label>
+              <Select
+                value={classId || "none"}
+                onValueChange={(value) => setClassId(value === "none" ? null : value)}
+                disabled={isSaving}
+              >
+                <SelectTrigger id="class">
+                  <SelectValue placeholder="No class" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No class</SelectItem>
+                  {classes.map((cls) => (
+                    <SelectItem key={cls.id} value={cls.id}>
+                      {cls.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Organize this list by class while keeping it visible in all lists
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="difficulty">Difficulty Level (Optional)</Label>
+              <Select
+                value={difficultyLevel || "none"}
+                onValueChange={(value) => setDifficultyLevel(value === "none" ? null : value as DifficultyLevel)}
+                disabled={isSaving}
+              >
+                <SelectTrigger id="difficulty">
+                  <SelectValue placeholder="No difficulty" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No difficulty</SelectItem>
+                  <SelectItem value="beginner">Beginner</SelectItem>
+                  <SelectItem value="intermediate">Intermediate</SelectItem>
+                  <SelectItem value="advanced">Advanced</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Tag for differentiated instruction
+              </p>
+            </div>
+          </div>
+
           {/* Jeopardy Categorization Section */}
           <div className="bg-muted/50 p-4 rounded-lg space-y-3">
             <div className="flex items-center justify-between">
