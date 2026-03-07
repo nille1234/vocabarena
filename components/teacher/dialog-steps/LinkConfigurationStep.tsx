@@ -169,11 +169,6 @@ export function LinkConfigurationStep({
             <CardContent className="pt-6">
               <div className="space-y-4">
                 <div>
-                  <Label className="text-xs text-muted-foreground">Game Code</Label>
-                  <p className="text-2xl font-bold font-mono text-primary">{generatedCode}</p>
-                </div>
-                
-                <div>
                   <Label className="text-xs text-muted-foreground">Shareable Link</Label>
                   <div className="flex items-center gap-2 mt-1">
                     <Input
@@ -196,7 +191,7 @@ export function LinkConfigurationStep({
                 </div>
 
                 <p className="text-sm text-muted-foreground">
-                  Share this link path with your students, or use the Preview button below to test it. Students will only see the games you selected.
+                  Share this link with your students, or use the Preview button below to test it. Students will only see the games you selected.
                 </p>
 
                 <Button

@@ -138,6 +138,10 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess, defaultCla
         toast.error('Please select at least one game');
         return;
       }
+      // Auto-set link name from vocabulary name
+      if (!linkName) {
+        setLinkName(getVocabularyName());
+      }
       setCurrentStep('link');
     }
   };
