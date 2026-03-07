@@ -9,6 +9,7 @@ export async function createVocabularyList(
 ): Promise<{ success: boolean; listId?: string; error?: string }> {
   const supabase = createClient();
   if (!supabase) {
+    console.error('[createVocabularyList] Supabase client not initialized');
     return { success: false, error: 'Supabase client not initialized' };
   }
 
@@ -16,8 +17,11 @@ export async function createVocabularyList(
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
+      console.error('[createVocabularyList] User authentication failed:', userError);
       return { success: false, error: 'User not authenticated' };
     }
+
+    console.log('[createVocabularyList] Creating list for user:', user.id);
 
     // Check if a vocabulary list with the same name already exists for this user
     const { data: existingList, error: checkError } = await supabase
@@ -27,10 +31,14 @@ export async function createVocabularyList(
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (checkError) throw checkError;
+    if (checkError) {
+      console.error('[createVocabularyList] Error checking existing list:', checkError);
+      throw checkError;
+    }
 
     if (existingList) {
       // List with same name exists, return the existing list ID
+      console.log('[createVocabularyList] List already exists:', existingList.id);
       return { 
         success: true, 
         listId: existingList.id,
@@ -38,6 +46,13 @@ export async function createVocabularyList(
     }
 
     // Create the vocabulary list
+    console.log('[createVocabularyList] Inserting new list with data:', {
+      name,
+      description,
+      language,
+      user_id: user.id,
+    });
+
     const { data: listData, error: listError } = await supabase
       .from('vocabulary_lists')
       .insert({
@@ -49,7 +64,18 @@ export async function createVocabularyList(
       .select()
       .single();
 
-    if (listError) throw listError;
+    if (listError) {
+      console.error('[createVocabularyList] Error creating list:', {
+        error: listError,
+        message: listError.message,
+        details: listError.details,
+        hint: listError.hint,
+        code: listError.code,
+      });
+      throw listError;
+    }
+
+    console.log('[createVocabularyList] List created successfully:', listData.id);
 
     // Insert all vocabulary cards
     const cardsToInsert = cards.map((card) => ({
@@ -60,15 +86,35 @@ export async function createVocabularyList(
       order_index: card.orderIndex,
     }));
 
+    console.log('[createVocabularyList] Inserting', cardsToInsert.length, 'cards');
+
     const { error: cardsError } = await supabase
       .from('vocabulary_cards')
       .insert(cardsToInsert);
 
-    if (cardsError) throw cardsError;
+    if (cardsError) {
+      console.error('[createVocabularyList] Error inserting cards:', {
+        error: cardsError,
+        message: cardsError.message,
+        details: cardsError.details,
+        hint: cardsError.hint,
+        code: cardsError.code,
+      });
+      throw cardsError;
+    }
 
+    console.log('[createVocabularyList] Cards inserted successfully');
     return { success: true, listId: listData.id };
   } catch (error) {
-    console.error('Error creating vocabulary list:', error);
+    console.error('[createVocabularyList] Caught error:', error);
+    if (error && typeof error === 'object') {
+      console.error('[createVocabularyList] Error details:', {
+        message: (error as any).message,
+        details: (error as any).details,
+        hint: (error as any).hint,
+        code: (error as any).code,
+      });
+    }
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

@@ -3,10 +3,6 @@ import OpenAI from 'openai';
 
 export const dynamic = 'force-dynamic';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 interface VocabularyWord {
   term: string;
   definition: string;
@@ -18,6 +14,18 @@ interface CategoryAssignment {
 
 export async function POST(request: NextRequest) {
   try {
+    // Initialize OpenAI client inside the function to avoid build-time execution
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: 'OpenAI API key is not configured' },
+        { status: 500 }
+      );
+    }
+
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+
     const { words } = await request.json() as { words: VocabularyWord[] };
 
     if (!words || words.length < 25) {
