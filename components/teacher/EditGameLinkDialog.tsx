@@ -305,7 +305,7 @@ export function EditGameLinkDialog({
                       Word Count:
                     </span>
                     <span className="font-medium">
-                      {gameLink.vocabularyList?.cards.length || 0} words
+                      {gameLink.vocabularyList?.cards?.length || 0} words
                     </span>
                   </div>
                 </div>
