@@ -23,13 +23,32 @@ export async function createVocabularyList(
 
     console.log('[createVocabularyList] Creating list for user:', user.id);
 
-    // Check if a vocabulary list with the same name already exists for this user
-    const { data: existingList, error: checkError } = await supabase
+    // Check user role to determine duplicate check scope
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+      console.error('[createVocabularyList] Error fetching user profile:', profileError);
+      throw profileError;
+    }
+
+    const isSuperAdmin = profile?.role === 'super_admin';
+
+    // Check if a vocabulary list with the same name already exists
+    // For superadmins, check across all lists; for regular users, check only their own
+    let existingListQuery = supabase
       .from('vocabulary_lists')
       .select('id, name')
-      .eq('name', name)
-      .eq('user_id', user.id)
-      .maybeSingle();
+      .eq('name', name);
+
+    if (!isSuperAdmin) {
+      existingListQuery = existingListQuery.eq('user_id', user.id);
+    }
+
+    const { data: existingList, error: checkError } = await existingListQuery.maybeSingle();
 
     if (checkError) {
       console.error('[createVocabularyList] Error checking existing list:', checkError);
