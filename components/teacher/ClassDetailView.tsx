@@ -30,6 +30,8 @@ import { getGameLinksByClass } from "@/lib/supabase/classManagement";
 import { updateVocabularyList } from "@/lib/supabase/vocabularyManagement";
 import { CreateGameLinkDialog } from "./CreateGameLinkDialog";
 import { EditVocabularyListDialog } from "./EditVocabularyListDialog";
+import { EditGameLinkDialog } from "./EditGameLinkDialog";
+import { updateGameLink } from "@/lib/supabase/gameLinks";
 
 interface ClassDetailViewProps {
   classId: string;
@@ -45,6 +47,7 @@ export function ClassDetailView({ classId, userId }: ClassDetailViewProps) {
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingList, setEditingList] = useState<VocabularyList | null>(null);
+  const [editingGameLink, setEditingGameLink] = useState<GameLink | null>(null);
 
   useEffect(() => {
     loadClassData();
@@ -113,6 +116,21 @@ export function ClassDetailView({ classId, userId }: ClassDetailViewProps) {
     const url = `${window.location.origin}/play/${code}`;
     navigator.clipboard.writeText(url);
     toast.success("Game link copied to clipboard");
+  };
+
+  const handleRemoveGameLinkFromClass = async (linkId: string) => {
+    try {
+      const result = await updateGameLink(linkId, { classId: null });
+      if (result.success) {
+        toast.success("Game link removed from class");
+        loadClassData();
+      } else {
+        toast.error(result.error || "Failed to remove game link from class");
+      }
+    } catch (error) {
+      console.error("Error removing game link from class:", error);
+      toast.error("Failed to remove game link from class");
+    }
   };
 
   const getDifficultyColor = (level: string | undefined) => {
@@ -361,7 +379,15 @@ export function ClassDetailView({ classId, userId }: ClassDetailViewProps) {
                               </Badge>
                             </div>
                           )}
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEditingGameLink(link as GameLink)}
+                            >
+                              <FileEdit className="h-3 w-3 mr-2" />
+                              Edit
+                            </Button>
                             <Button
                               variant="outline"
                               size="sm"
@@ -376,6 +402,14 @@ export function ClassDetailView({ classId, userId }: ClassDetailViewProps) {
                                 Open
                               </Button>
                             </Link>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRemoveGameLinkFromClass(link.id)}
+                            >
+                              <Trash2 className="h-3 w-3 mr-2" />
+                              Remove from Class
+                            </Button>
                           </div>
                         </div>
                       </CardContent>
@@ -406,6 +440,19 @@ export function ClassDetailView({ classId, userId }: ClassDetailViewProps) {
           onOpenChange={(open) => !open && setEditingList(null)}
           onSuccess={() => {
             setEditingList(null);
+            loadClassData();
+          }}
+        />
+      )}
+
+      {/* Edit Game Link Dialog */}
+      {editingGameLink && (
+        <EditGameLinkDialog
+          gameLink={editingGameLink}
+          open={!!editingGameLink}
+          onOpenChange={(open) => !open && setEditingGameLink(null)}
+          onSuccess={() => {
+            setEditingGameLink(null);
             loadClassData();
           }}
         />

@@ -231,6 +231,7 @@ export async function updateGameLink(
     gapFillSummaryLength?: number;
     requirePrerequisiteGames?: boolean;
     allowWordListDownload?: boolean;
+    classId?: string | null;
   }
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = createClient();
@@ -256,6 +257,7 @@ export async function updateGameLink(
     if (updates.gapFillSummaryLength !== undefined) updateData.gap_fill_summary_length = updates.gapFillSummaryLength;
     if (updates.requirePrerequisiteGames !== undefined) updateData.require_prerequisite_games = updates.requirePrerequisiteGames;
     if (updates.allowWordListDownload !== undefined) updateData.allow_word_list_download = updates.allowWordListDownload;
+    if (updates.classId !== undefined) updateData.class_id = updates.classId;
 
     const { error } = await supabase
       .from('game_links')
