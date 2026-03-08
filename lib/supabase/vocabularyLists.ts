@@ -146,18 +146,38 @@ export async function getAllVocabularyLists(): Promise<VocabularyList[]> {
   if (!supabase) return [];
 
   try {
-    // Get current user to filter by user_id
+    // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
       console.error('User not authenticated:', userError);
       return [];
     }
 
-    const { data: lists, error: listsError } = await supabase
+    // Check user role to determine list visibility scope
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+      console.error('Error fetching user profile:', profileError);
+      throw profileError;
+    }
+
+    const isSuperAdmin = profile?.role === 'super_admin';
+
+    // Build query - superadmins see all lists, regular users see only their own
+    let listsQuery = supabase
       .from('vocabulary_lists')
       .select('*')
-      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
+
+    if (!isSuperAdmin) {
+      listsQuery = listsQuery.eq('user_id', user.id);
+    }
+
+    const { data: lists, error: listsError } = await listsQuery;
 
     if (listsError) throw listsError;
     if (!lists) return [];
