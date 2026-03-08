@@ -13,7 +13,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Save, Settings, BookOpen, Info } from "lucide-react";
+import { Loader2, Save, Settings, BookOpen, Info, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import {
   updateGameLink,
@@ -22,7 +22,7 @@ import {
   updateVocabularyCard,
   deleteVocabularyCard,
 } from "@/lib/supabase/vocabularyManagement";
-import { GameLink, GameMode, VocabCard } from "@/types/game";
+import { GameLink, GameMode, VocabCard, Class } from "@/types/game";
 import { WordListEditor } from "./WordListEditor";
 import { GameSelectionStep } from "./dialog-steps/GameSelectionStep";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -33,6 +33,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { getAllClasses } from "@/lib/supabase/classManagement";
 
 interface EditGameLinkDialogProps {
   open: boolean;
@@ -66,8 +74,11 @@ export function EditGameLinkDialog({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [loadingClasses, setLoadingClasses] = useState(false);
 
-  // Load vocabulary list when dialog opens
+  // Load vocabulary list and classes when dialog opens
   useEffect(() => {
     if (gameLink && open) {
       setSelectedGames(gameLink.enabledGames);
@@ -83,7 +94,9 @@ export function EditGameLinkDialog({
       setGapFillSummaryLength(gameLink.gapFillSummaryLength || 250);
       setRequirePrerequisiteGames(gameLink.requirePrerequisiteGames || false);
       setAllowWordListDownload(gameLink.allowWordListDownload || false);
+      setSelectedClassId((gameLink as any).classId || null);
       loadVocabularyList();
+      loadClasses();
     }
   }, [gameLink, open]);
 
@@ -111,6 +124,19 @@ export function EditGameLinkDialog({
       toast.error("Failed to load vocabulary list");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadClasses = async () => {
+    setLoadingClasses(true);
+    try {
+      const allClasses = await getAllClasses();
+      setClasses(allClasses);
+    } catch (error) {
+      console.error("Error loading classes:", error);
+      toast.error("Failed to load classes");
+    } finally {
+      setLoadingClasses(false);
     }
   };
 
@@ -158,6 +184,7 @@ export function EditGameLinkDialog({
         gapFillSummaryLength: selectedGames.includes('gap-fill') ? gapFillSummaryLength : undefined,
         requirePrerequisiteGames: requirePrerequisiteGames,
         allowWordListDownload: allowWordListDownload,
+        classId: selectedClassId,
       });
 
       if (result.success) {
@@ -280,6 +307,42 @@ export function EditGameLinkDialog({
                       {gameLink.vocabularyList?.cards.length || 0} words
                     </span>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Class Assignment */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                    <Label htmlFor="class-select" className="text-sm font-medium">
+                      Assign to Class
+                    </Label>
+                  </div>
+                  <Select
+                    value={selectedClassId || "none"}
+                    onValueChange={(value) => setSelectedClassId(value === "none" ? null : value)}
+                    disabled={loadingClasses}
+                  >
+                    <SelectTrigger id="class-select">
+                      <SelectValue placeholder="Select a class..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        <span className="text-muted-foreground">None (unassigned)</span>
+                      </SelectItem>
+                      {classes.map((cls) => (
+                        <SelectItem key={cls.id} value={cls.id}>
+                          {cls.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Assign this game link to a class for better organization
+                  </p>
                 </div>
               </CardContent>
             </Card>
