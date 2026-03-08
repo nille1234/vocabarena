@@ -191,7 +191,39 @@ export async function getGameLinksByClass(classId: string) {
     throw error;
   }
 
-  return data || [];
+  // Map the data to include proper field names
+  return (data || []).map((link: any) => ({
+    id: link.id,
+    code: link.code,
+    name: link.name,
+    listId: link.list_id,
+    classId: link.class_id,
+    enabledGames: link.enabled_games,
+    crosswordWordCount: link.crossword_word_count,
+    wordSearchWordCount: link.word_search_word_count,
+    wordSearchShowList: link.word_search_show_list,
+    othelloAnswerMode: link.othello_answer_mode,
+    ticTacToeAnswerMode: link.tic_tac_toe_answer_mode,
+    connectFourAnswerMode: link.connect_four_answer_mode,
+    jeopardyAnswerMode: link.jeopardy_answer_mode,
+    jeopardyTimeLimit: link.jeopardy_time_limit,
+    gapFillGapCount: link.gap_fill_gap_count,
+    gapFillSummaryLength: link.gap_fill_summary_length,
+    requirePrerequisiteGames: link.require_prerequisite_games,
+    allowWordListDownload: link.allow_word_list_download,
+    isActive: link.is_active,
+    createdAt: new Date(link.created_at),
+    expiresAt: link.expires_at ? new Date(link.expires_at) : undefined,
+    vocabularyList: link.vocabulary_lists ? {
+      id: link.vocabulary_lists.id,
+      name: link.vocabulary_lists.name,
+      description: link.vocabulary_lists.description,
+      language: link.vocabulary_lists.language,
+      difficultyLevel: link.vocabulary_lists.difficulty_level,
+      classId: link.vocabulary_lists.class_id,
+      cards: [], // Cards not needed in list view
+    } : undefined
+  }));
 }
 
 /**

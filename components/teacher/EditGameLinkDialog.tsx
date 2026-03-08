@@ -94,7 +94,8 @@ export function EditGameLinkDialog({
       setGapFillSummaryLength(gameLink.gapFillSummaryLength || 250);
       setRequirePrerequisiteGames(gameLink.requirePrerequisiteGames || false);
       setAllowWordListDownload(gameLink.allowWordListDownload || false);
-      setSelectedClassId((gameLink as any).classId || null);
+      // Set the class ID if it exists in the game link
+      setSelectedClassId('classId' in gameLink ? (gameLink as any).classId : null);
       loadVocabularyList();
       loadClasses();
     }
