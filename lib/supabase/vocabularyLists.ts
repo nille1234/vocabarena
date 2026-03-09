@@ -400,3 +400,31 @@ export async function getVocabularyListWords(listId: string): Promise<string[]> 
     return [];
   }
 }
+
+export async function getVocabularyListCards(listId: string): Promise<VocabCard[]> {
+  const supabase = createClient();
+  if (!supabase) return [];
+
+  try {
+    const { data: cards, error } = await supabase
+      .from('vocabulary_cards')
+      .select('*')
+      .eq('list_id', listId)
+      .order('order_index', { ascending: true });
+
+    if (error) throw error;
+    if (!cards) return [];
+
+    return cards.map((card: any) => ({
+      id: card.id,
+      term: card.term,
+      definition: card.definition,
+      germanTerm: card.german_term,
+      orderIndex: card.order_index,
+      jeopardyCategory: card.jeopardy_category,
+    }));
+  } catch (error) {
+    console.error('Error fetching vocabulary list cards:', error);
+    return [];
+  }
+}

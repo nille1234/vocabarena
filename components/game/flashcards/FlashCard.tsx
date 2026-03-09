@@ -13,6 +13,12 @@ interface FlashCardProps {
 }
 
 export function FlashCard({ card, onFlip, isFlipped }: FlashCardProps) {
+  // Fallback for empty definitions
+  const displayDefinition = card.definition && card.definition.trim() !== '' 
+    ? card.definition 
+    : '[No translation available]';
+  const hasEmptyDefinition = !card.definition || card.definition.trim() === '';
+
   return (
     <div className="perspective-1000 w-full max-w-2xl mx-auto">
       <motion.div
@@ -50,13 +56,13 @@ export function FlashCard({ card, onFlip, isFlipped }: FlashCardProps) {
             transform: "rotateY(180deg)",
           }}
         >
-          <Card className="bg-gradient-to-br from-purple-500 to-purple-600 border-purple-400 shadow-2xl min-h-[280px]">
+          <Card className={`bg-gradient-to-br ${hasEmptyDefinition ? 'from-red-500 to-red-600 border-red-400' : 'from-purple-500 to-purple-600 border-purple-400'} shadow-2xl min-h-[280px]`}>
             <CardContent className="flex flex-col items-center justify-center p-8 min-h-[280px]">
               <Badge className="mb-6 text-sm bg-white/20 hover:bg-white/30 text-white border-white/30">
                 Definition
               </Badge>
-              <p className="text-2xl font-semibold text-white text-center mb-6 leading-relaxed">
-                {card.definition}
+              <p className={`text-2xl font-semibold text-white text-center mb-6 leading-relaxed ${hasEmptyDefinition ? 'italic' : ''}`}>
+                {displayDefinition}
               </p>
               <p className="text-white/80 text-sm text-center">
                 Click to flip back

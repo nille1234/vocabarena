@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { parseWordlist, parsePastedText } from "@/lib/utils/wordlistParser";
 import { VocabCard, VocabularyList } from "@/types/game";
-import { getAllVocabularyLists, getVocabularyListWords } from "@/lib/supabase/vocabularyManagement";
+import { getAllVocabularyLists, getVocabularyListCards } from "@/lib/supabase/vocabularyManagement";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -115,35 +115,46 @@ export function VocabularySelectionStep({
 
     setIsLoadingWords(true);
     try {
-      // Fetch words from all selected lists
-      const allWords: string[] = [];
+      // Fetch full card data from all selected lists
+      const allCards: VocabCard[] = [];
       for (const listId of selectedListIds) {
-        const words = await getVocabularyListWords(listId);
-        allWords.push(...words);
+        const cards = await getVocabularyListCards(listId);
+        allCards.push(...cards);
       }
 
-      // Remove duplicates (case-insensitive)
-      const uniqueWordsSet = new Set(allWords.map(w => w.trim().toLowerCase()));
-      const uniqueWords = Array.from(uniqueWordsSet);
+      // Remove duplicates based on term (case-insensitive)
+      const uniqueCardsMap = new Map<string, VocabCard>();
+      allCards.forEach(card => {
+        const key = card.term.trim().toLowerCase();
+        if (!uniqueCardsMap.has(key)) {
+          uniqueCardsMap.set(key, card);
+        }
+      });
+      
+      const uniqueCards = Array.from(uniqueCardsMap.values());
       
       // Randomize order
-      const shuffled = uniqueWords.sort(() => Math.random() - 0.5);
+      const shuffled = uniqueCards.sort(() => Math.random() - 0.5);
       
-      // Convert to VocabCard format
-      const cards: VocabCard[] = shuffled.map((word, index) => ({
+      // Re-index the cards
+      const reindexedCards: VocabCard[] = shuffled.map((card, index) => ({
+        ...card,
         id: `temp-${index}`,
-        term: word,
-        definition: '', // Will be filled in by the game
         orderIndex: index,
       }));
 
-      onParsedCardsChange(cards);
-      setPastedText(shuffled.join('\n'));
+      onParsedCardsChange(reindexedCards);
+      
+      // Create pasted text format for display
+      const pastedTextFormat = reindexedCards
+        .map(card => `${card.term} - ${card.definition}`)
+        .join('\n');
+      setPastedText(pastedTextFormat);
       
       // Switch to the "Upload New" tab to show the combined words
       onVocabSourceChange('new');
       
-      toast.success(`Loaded ${uniqueWords.length} unique words from ${selectedListIds.length} list(s)`);
+      toast.success(`Loaded ${uniqueCards.length} unique words from ${selectedListIds.length} list(s)`);
     } catch (error) {
       console.error('Error loading vocabulary lists:', error);
       toast.error('Failed to load vocabulary lists');

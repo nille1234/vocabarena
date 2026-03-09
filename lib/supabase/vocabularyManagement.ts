@@ -6,6 +6,7 @@ export {
   updateVocabularyList,
   deleteVocabularyList,
   getVocabularyListWords,
+  getVocabularyListCards,
 } from './vocabularyLists';
 
 export {

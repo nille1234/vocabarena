@@ -100,6 +100,10 @@ function DroppableCard({
     disabled,
   });
 
+  // Fallback for empty definitions
+  const displayContent = content && content.trim() !== '' ? content : '[No translation]';
+  const isEmpty = !content || content.trim() === '';
+
   return (
     <motion.div
       ref={setNodeRef}
@@ -113,13 +117,16 @@ function DroppableCard({
           transition-all duration-300
           ${isOver ? 'border-green-500 bg-green-500/20 scale-105 shadow-lg' : 'border-purple-500/50 bg-purple-500/10'}
           ${disabled ? 'opacity-0' : ''}
+          ${isEmpty ? 'border-red-500/50 bg-red-500/10' : ''}
         `}
       >
         <CardContent className="p-1.5 min-h-[48px] flex flex-col items-center justify-center">
           <Badge className="mb-0 text-[9px] bg-purple-500 hover:bg-purple-600 text-white px-1 py-0">
             Definition
           </Badge>
-          <p className="text-center font-medium text-[10px] leading-[1.2]">{content}</p>
+          <p className={`text-center font-medium text-[10px] leading-[1.2] ${isEmpty ? 'text-red-500 italic' : ''}`}>
+            {displayContent}
+          </p>
         </CardContent>
       </Card>
     </motion.div>
@@ -335,6 +342,7 @@ export default function MatchPage() {
       matched: false,
     }));
 
+    console.log('🎮 Match - Created pairs:', matchPairs.slice(0, 3));
     setPairs(matchPairs);
     setCurrentRoundErrors(new Set());
   };
