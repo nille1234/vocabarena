@@ -71,48 +71,13 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess, defaultCla
   // Processing
   const [isCreating, setIsCreating] = useState(false);
 
-  // Auto-load pre-selected lists and skip to game selection
+  // Auto-switch to existing lists tab when opened from a class page (filterToListIds provided)
   useEffect(() => {
-    if (open && preSelectedListIds && preSelectedListIds.length > 0) {
-      loadPreSelectedLists();
+    if (open && filterToListIds && filterToListIds.length > 0) {
+      // Switch to existing lists tab to show the toggle
+      setVocabSource('existing');
     }
-  }, [open, preSelectedListIds]);
-
-  const loadPreSelectedLists = async () => {
-    try {
-      // Fetch words from all pre-selected lists
-      const allWords: string[] = [];
-      for (const listId of preSelectedListIds!) {
-        const words = await getVocabularyListWords(listId);
-        allWords.push(...words);
-      }
-
-      // Remove duplicates (case-insensitive)
-      const uniqueWordsSet = new Set(allWords.map(w => w.trim().toLowerCase()));
-      const uniqueWords = Array.from(uniqueWordsSet);
-      
-      // Randomize order
-      const shuffled = uniqueWords.sort(() => Math.random() - 0.5);
-      
-      // Convert to VocabCard format
-      const cards: VocabCard[] = shuffled.map((word, index) => ({
-        id: `temp-${index}`,
-        term: word,
-        definition: '', // Will be filled in by the game
-        orderIndex: index,
-      }));
-
-      setParsedCards(cards);
-      setVocabSource('new');
-      setVocabListName(`Combined Lists - ${new Date().toLocaleDateString()}`);
-      
-      // Skip to game selection
-      setCurrentStep('games');
-    } catch (error) {
-      console.error('Error loading pre-selected lists:', error);
-      toast.error('Failed to load selected vocabulary lists');
-    }
-  };
+  }, [open, filterToListIds]);
 
   const handleNextStep = () => {
     if (currentStep === 'vocabulary') {
@@ -224,8 +189,7 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess, defaultCla
   };
 
   const resetForm = () => {
-    // Only reset to vocabulary step if no pre-selected lists
-    setCurrentStep(preSelectedListIds && preSelectedListIds.length > 0 ? 'games' : 'vocabulary');
+    setCurrentStep('vocabulary');
     setVocabSource('new');
     setParsedCards([]);
     setVocabListName("");
@@ -303,6 +267,7 @@ export function CreateGameLinkDialog({ open, onOpenChange, onSuccess, defaultCla
             existingLists={existingLists}
             onExistingListsChange={setExistingLists}
             filterToListIds={filterToListIds}
+            preSelectedListIds={preSelectedListIds}
           />
         )}
 

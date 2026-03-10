@@ -217,11 +217,9 @@ export function ClassDetailView({ classId, userId }: ClassDetailViewProps) {
                 <Button
                   size="lg"
                   onClick={() => setIsCreateDialogOpen(true)}
-                  disabled={selectedListIds.size === 0}
                 >
                   <Plus className="mr-2 h-5 w-5" />
                   Create Game Link
-                  {selectedListIds.size > 0 && ` (${selectedListIds.size} selected)`}
                 </Button>
               </div>
             </CardContent>
@@ -429,7 +427,7 @@ export function ClassDetailView({ classId, userId }: ClassDetailViewProps) {
         onSuccess={loadClassData}
         defaultClassId={classId}
         filterToListIds={vocabularyLists.map(l => l.id)}
-        preSelectedListIds={Array.from(selectedListIds)}
+        preSelectedListIds={selectedListIds.size > 0 ? Array.from(selectedListIds) : undefined}
       />
 
       {/* Edit Vocabulary List Dialog */}
